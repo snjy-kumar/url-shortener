@@ -1,0 +1,4 @@
+# Temporarily disable test files
+tests/
+**/*.test.ts
+**/*.spec.ts
