@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   BarChart3,
@@ -38,12 +38,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { urlService } from "@/services/urlService";
+import urlService from "@/services/urlService";
 import { Url, UrlListResponse } from "@/types";
-import { EnhancedUrlShortener } from "@/components/EnhancedUrlShortener";
-import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
-import { PersonalizedRecommendations } from "@/components/PersonalizedRecommendations";
-import { QRCodeGenerator } from "@/components/QRCodeGenerator";
+import EnhancedUrlShortener from "@/components/EnhancedUrlShortener";
+import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import PersonalizedRecommendations from "@/components/PersonalizedRecommendations";
+import QRCodeGenerator from "@/components/QRCodeGenerator";
 
 export default function Dashboard() {
   const [urls, setUrls] = useState<Url[]>([]);
@@ -62,84 +62,84 @@ export default function Dashboard() {
   const [showQRGenerator, setShowQRGenerator] = useState(false);
   const [qrUrl, setQrUrl] = useState<Url | null>(null);
 
-  useEffect(() => {
-    const loadUrls = async () => {
-      setIsLoading(true);
-      try {
-        const response: UrlListResponse = await urlService.getUrls(
-          pagination.currentPage,
-          10,
-          "createdAt",
-          "desc"
-        );
+  const fetchUrls = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response: UrlListResponse = await urlService.getUrls(
+        pagination.currentPage,
+        10,
+        "createdAt",
+        "desc"
+      );
 
-        if (response.success && response.data) {
-          setUrls(response.data.urls);
-          setPagination(response.data.pagination);
-        }
-      } catch (error) {
-        // Fallback mock data for demonstration
-        const mockUrls: Url[] = [
-          {
-            id: "1",
-            shortCode: "abc123",
-            originalUrl:
-              "https://example.com/very-long-url-that-needs-shortening",
-            shortUrl: "https://short.ly/abc123",
-            customAlias: "example-link",
-            description: "Example demonstration link",
-            clickCount: 142,
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: "2",
-            shortCode: "xyz789",
-            originalUrl: "https://docs.example.com/api/documentation",
-            shortUrl: "https://short.ly/xyz789",
-            customAlias: "api-docs",
-            description: "API Documentation",
-            clickCount: 89,
-            isActive: true,
-            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: "3",
-            shortCode: "def456",
-            originalUrl: "https://blog.example.com/how-to-use-url-shortener",
-            shortUrl: "https://short.ly/def456",
-            description: "Blog post about URL shortening",
-            clickCount: 234,
-            isActive: true,
-            expiresAt: new Date(
-              Date.now() + 7 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-            createdAt: new Date(
-              Date.now() - 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-            updatedAt: new Date(
-              Date.now() - 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          },
-        ];
-        setUrls(mockUrls);
-        setPagination({
-          currentPage: 1,
-          totalPages: 1,
-          totalCount: mockUrls.length,
-          hasNext: false,
-          hasPrev: false,
-        });
-        console.warn("Using mock URLs data:", error);
-      } finally {
-        setIsLoading(false);
+      if (response.success && response.data) {
+        setUrls(response.data.urls);
+        setPagination(response.data.pagination);
       }
-    };
+    } catch (error) {
+      // Fallback mock data for demonstration
+      const mockUrls: Url[] = [
+        {
+          id: "1",
+          shortCode: "abc123",
+          originalUrl:
+            "https://example.com/very-long-url-that-needs-shortening",
+          shortUrl: "https://short.ly/abc123",
+          customAlias: "example-link",
+          description: "Example demonstration link",
+          clickCount: 142,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: "2",
+          shortCode: "xyz789",
+          originalUrl: "https://docs.example.com/api/documentation",
+          shortUrl: "https://short.ly/xyz789",
+          customAlias: "api-docs",
+          description: "API Documentation",
+          clickCount: 89,
+          isActive: true,
+          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          id: "3",
+          shortCode: "def456",
+          originalUrl: "https://blog.example.com/how-to-use-url-shortener",
+          shortUrl: "https://short.ly/def456",
+          description: "Blog post about URL shortening",
+          clickCount: 234,
+          isActive: true,
+          expiresAt: new Date(
+            Date.now() + 7 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          createdAt: new Date(
+            Date.now() - 2 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          updatedAt: new Date(
+            Date.now() - 2 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+        },
+      ];
+      setUrls(mockUrls);
+      setPagination({
+        currentPage: 1,
+        totalPages: 1,
+        totalCount: mockUrls.length,
+        hasNext: false,
+        hasPrev: false,
+      });
+      console.warn("Using mock URLs data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pagination.currentPage]);
 
-    loadUrls();
-  }, [pagination.currentPage, searchTerm]);
+  useEffect(() => {
+    fetchUrls();
+  }, [fetchUrls, searchTerm]);
 
   const handleUrlCreated = (newUrl: Url) => {
     setUrls((prev) => [newUrl, ...prev]);

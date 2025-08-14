@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "URL Shortener - Fast & Reliable Link Management",
-  description: "Create short URLs instantly with analytics, custom aliases, and secure link management.",
+  description:
+    "Create short URLs instantly with analytics, custom aliases, and secure link management.",
 };
 
 export default function RootLayout({

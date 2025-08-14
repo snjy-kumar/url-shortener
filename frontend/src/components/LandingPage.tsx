@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/card";
 import UrlShortener from "@/components/UrlShortener";
 import UrlManager from "@/components/UrlManager";
-import { Url } from "@/types";
 
 export function LandingPage() {
   const [activeTab, setActiveTab] = useState<"home" | "create" | "manage">(
@@ -31,7 +30,7 @@ export function LandingPage() {
   );
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const handleUrlCreated = (url: Url) => {
+  const handleUrlCreated = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
 

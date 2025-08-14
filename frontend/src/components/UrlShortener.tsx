@@ -74,9 +74,10 @@ export function UrlShortener({ onUrlCreated }: UrlShortenerProps) {
         toast.success("Short URL created successfully!");
         reset();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const message =
-        error.response?.data?.message || "Failed to create short URL";
+        (error instanceof Error && error.message) ||
+        "Failed to create short URL";
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -87,7 +88,7 @@ export function UrlShortener({ onUrlCreated }: UrlShortenerProps) {
     try {
       await navigator.clipboard.writeText(text);
       toast.success("Copied to clipboard!");
-    } catch (error) {
+    } catch {
       toast.error("Failed to copy to clipboard");
     }
   };
@@ -307,7 +308,7 @@ export function UrlShortener({ onUrlCreated }: UrlShortenerProps) {
               <Button
                 variant="outline"
                 className="flex items-center gap-2"
-                onClick={() => toast.info("QR Code generation coming soon!")}
+                onClick={() => toast("QR Code generation coming soon!")}
               >
                 <QrCode className="w-4 h-4" />
                 QR Code

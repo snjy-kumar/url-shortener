@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Copy,
   ExternalLink,
@@ -40,7 +40,7 @@ export function UrlManager({ refreshTrigger }: UrlManagerProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const fetchUrls = async () => {
+  const fetchUrls = useCallback(async () => {
     try {
       setLoading(true);
       const response = await urlService.getUrls(
@@ -55,16 +55,16 @@ export function UrlManager({ refreshTrigger }: UrlManagerProps) {
         setTotalPages(response.data.pagination.totalPages);
         setTotalCount(response.data.pagination.totalCount);
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to fetch URLs");
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchUrls();
-  }, [currentPage, sortBy, sortOrder, refreshTrigger]);
+  }, [fetchUrls, refreshTrigger]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -88,7 +88,7 @@ export function UrlManager({ refreshTrigger }: UrlManagerProps) {
         toast.success("URL deleted successfully");
         fetchUrls();
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete URL");
     }
   };
@@ -231,7 +231,7 @@ export function UrlManager({ refreshTrigger }: UrlManagerProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => toast.info("Analytics coming soon!")}
+                          onClick={() => toast("Analytics coming soon!")}
                           title="View analytics"
                         >
                           <BarChart3 className="w-4 h-4" />
