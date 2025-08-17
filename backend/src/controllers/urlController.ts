@@ -1,18 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
 import { UrlService } from '../services/urlService';
-import { CreateUrlRequest } from '../types';
+import { CreateUrlRequest, AuthenticatedRequest } from '../types';
 import { logger } from '../utils/logger';
+import { prisma } from '../config/database';
 
 export class UrlController {
   /**
    * Create a short URL
    * POST /api/v1/urls
    */
-  static async createShortUrl(req: Request, res: Response, next: NextFunction) {
+  static async createShortUrl(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const {
         originalUrl,
         customAlias,
+        customDomain,
+        password,
         expiresAt,
         description,
       }: CreateUrlRequest = req.body;
@@ -27,16 +34,24 @@ export class UrlController {
       }
 
       // Create the short URL
-      const urlData = await UrlService.createShortUrl({
-        originalUrl,
-        customAlias,
-        expiresAt,
-        description,
-      });
+      const urlData = await UrlService.createShortUrl(
+        {
+          originalUrl,
+          customAlias,
+          customDomain,
+          password,
+          expiresAt,
+          description,
+        },
+        req.user?.id
+      );
 
       logger.info('Short URL created', {
         shortCode: urlData.shortCode,
         originalUrl: urlData.originalUrl,
+        userId: req.user?.id,
+        hasPassword: !!password,
+        customDomain: customDomain,
         ip: req.ip,
       });
 
@@ -118,14 +133,159 @@ export class UrlController {
 
       const result = await UrlService.listUrls(page, limit);
 
+      // Adapt response shape to frontend expectations
       res.json({
         success: true,
         message: 'URLs retrieved successfully',
-        data: result.data,
-        pagination: result.pagination,
+        data: {
+          urls: result.data,
+          pagination: {
+            currentPage: result.pagination.page,
+            totalPages: result.pagination.totalPages,
+            totalCount: result.pagination.total,
+            hasNext: result.pagination.hasNext,
+            hasPrev: result.pagination.hasPrev,
+          },
+        },
       });
     } catch (error) {
       logger.error('Error listing URLs:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Update URL by short code
+   * PUT /api/v1/urls/:shortCode
+   */
+  static async updateUrl(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { shortCode } = req.params;
+      if (!shortCode) {
+        res
+          .status(400)
+          .json({ success: false, message: 'Short code is required' });
+        return;
+      }
+
+      const { description, expiresAt, isActive, customAlias } =
+        req.body as Partial<{
+          description: string;
+          expiresAt: string;
+          isActive: boolean;
+          customAlias: string;
+        }>;
+
+      const updated = await UrlService.updateUrl(shortCode, {
+        description,
+        expiresAt,
+        isActive,
+        customAlias,
+      });
+
+      if (!updated) {
+        res.status(404).json({ success: false, message: 'URL not found' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: 'URL updated successfully',
+        data: updated,
+      });
+    } catch (error) {
+      logger.error('Error updating URL:', error);
+      if (error instanceof Error) {
+        res.status(400).json({ success: false, message: error.message });
+        return;
+      }
+      next(error);
+    }
+  }
+
+  /**
+   * Get analytics for a URL by short code
+   * GET /api/v1/urls/:shortCode/analytics
+   */
+  static async getUrlAnalytics(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { shortCode } = req.params;
+      const { start, end } = req.query as { start?: string; end?: string };
+
+      if (!shortCode) {
+        res
+          .status(400)
+          .json({ success: false, message: 'Short code is required' });
+        return;
+      }
+
+      const analytics = await UrlService.getAnalytics(shortCode, start, end);
+      if (!analytics) {
+        res.status(404).json({ success: false, message: 'URL not found' });
+        return;
+      }
+
+      res.json({ success: true, data: analytics });
+    } catch (error) {
+      logger.error('Error getting analytics:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Verify password for password-protected URL
+   * POST /api/v1/urls/:shortCode/verify-password
+   */
+  static async verifyUrlPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { shortCode } = req.params;
+      const { password } = req.body;
+
+      if (!shortCode) {
+        res
+          .status(400)
+          .json({ success: false, message: 'Short code is required' });
+        return;
+      }
+
+      if (!password) {
+        res
+          .status(400)
+          .json({ success: false, message: 'Password is required' });
+        return;
+      }
+
+      const isValid = await UrlService.verifyUrlPassword(shortCode, password);
+
+      if (!isValid) {
+        res.status(401).json({ success: false, message: 'Invalid password' });
+        return;
+      }
+
+      // Get the original URL for redirection
+      const originalUrl = await UrlService.getOriginalUrl(shortCode);
+      if (!originalUrl) {
+        res
+          .status(404)
+          .json({ success: false, message: 'URL not found or expired' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: 'Password verified successfully',
+        data: { originalUrl },
+      });
+    } catch (error) {
+      logger.error('Error verifying URL password:', error);
       next(error);
     }
   }
@@ -191,6 +351,36 @@ export class UrlController {
         return;
       }
 
+      // Get URL details to check for password protection
+      const urlDetails = await UrlService.getUrlByShortCode(shortCode);
+      if (!urlDetails) {
+        res.status(404).json({
+          success: false,
+          message: 'URL not found or expired',
+        });
+        return;
+      }
+
+      // Check if URL is password protected
+      const url = await prisma.url.findFirst({
+        where: {
+          OR: [{ shortCode }, { customAlias: shortCode }],
+          isActive: true,
+        },
+        select: { password: true, originalUrl: true, id: true },
+      });
+
+      if (url?.password) {
+        // URL is password protected, return special response
+        res.status(423).json({
+          success: false,
+          message: 'This URL is password protected',
+          requiresPassword: true,
+          shortCode: shortCode,
+        });
+        return;
+      }
+
       const originalUrl = await UrlService.getOriginalUrl(shortCode);
 
       if (!originalUrl) {
@@ -202,7 +392,6 @@ export class UrlController {
       }
 
       // Record the click/visit
-      const url = await UrlService.getUrlByShortCode(shortCode);
       if (url) {
         await UrlService.recordClick(
           url.id,

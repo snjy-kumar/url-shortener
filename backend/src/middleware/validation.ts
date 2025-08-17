@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 
 export const validateCreateUrl = [
   body('originalUrl')
@@ -49,6 +49,70 @@ export const validateCreateUrl = [
       }
       return true;
     }),
+
+  // Middleware to handle validation errors
+  (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array().map((error) => ({
+          field: error.type === 'field' ? error.path : 'unknown',
+          message: error.msg,
+        })),
+      });
+      return;
+    }
+    next();
+  },
+];
+
+export const validateRegister = [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+
+  body('password')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Password must be between 8 and 128 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage(
+      'Password must contain at least one lowercase letter, one uppercase letter, and one number'
+    ),
+
+  body('name')
+    .optional()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Name must be between 1 and 100 characters')
+    .trim(),
+
+  // Middleware to handle validation errors
+  (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array().map((error) => ({
+          field: error.type === 'field' ? error.path : 'unknown',
+          message: error.msg,
+        })),
+      });
+      return;
+    }
+    next();
+  },
+];
+
+export const validateLogin = [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+
+  body('password').notEmpty().withMessage('Password is required'),
 
   // Middleware to handle validation errors
   (req: Request, res: Response, next: NextFunction) => {

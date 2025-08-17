@@ -1,5 +1,13 @@
 import { Request } from 'express';
-import { User } from '@prisma/client';
+
+export interface User {
+  id: number;
+  email: string;
+  name: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
@@ -8,12 +16,14 @@ export interface AuthenticatedRequest extends Request {
 export interface CreateUrlRequest {
   originalUrl: string;
   customAlias?: string;
+  customDomain?: string;
+  password?: string;
   expiresAt?: string;
   description?: string;
 }
 
 export interface UrlResponse {
-  id: number;
+  id: string;
   shortCode: string;
   originalUrl: string;
   shortUrl: string;

@@ -15,6 +15,7 @@ import { requestLogger } from './middleware/requestLogger';
 // Import routes (to be created)
 import urlRoutes from './routes/url';
 import authRoutes from './routes/auth';
+import qrRoutes from './routes/qr';
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.get('/health', async (req, res) => {
 // API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/urls', urlRoutes);
+app.use('/api/v1/qr', qrRoutes);
 
 // Import URL controller for redirection
 import { UrlController } from './controllers/urlController';
@@ -127,5 +129,8 @@ process.on('SIGINT', async () => {
 });
 
 startServer();
+
+// Export app for testing
+export { app };
 
 export default app;

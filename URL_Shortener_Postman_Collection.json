@@ -1,0 +1,823 @@
+{
+  "info": {
+    "name": "URL Shortener API - Complete Collection",
+    "description": "Complete API collection for URL Shortener with Authentication, Password Protection, Custom Domains, and QR Code Generation",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "short_code",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Check if the server is running and database is connected"
+      },
+      "response": [
+        {
+          "name": "Health Check Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"OK\",\n  \"timestamp\": \"2025-08-17T16:00:00.000Z\",\n  \"uptime\": 3600.5,\n  \"environment\": \"development\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.token) {",
+                  "        pm.collectionVariables.set('auth_token', response.data.token);",
+                  "        pm.collectionVariables.set('user_id', response.data.user.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Password123\",\n  \"name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Register a new user account"
+          },
+          "response": [
+            {
+              "name": "Registration Success",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"success\": true,\n  \"message\": \"User registered successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": 1,\n      \"email\": \"user@example.com\",\n      \"name\": \"Test User\",\n      \"isActive\": true,\n      \"createdAt\": \"2025-08-17T16:00:00.000Z\"\n    },\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.token) {",
+                  "        pm.collectionVariables.set('auth_token', response.data.token);",
+                  "        pm.collectionVariables.set('user_id', response.data.user.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Login with existing user credentials"
+          },
+          "response": [
+            {
+              "name": "Login Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"user\": {\n      \"id\": 1,\n      \"email\": \"user@example.com\",\n      \"name\": \"Test User\",\n      \"isActive\": true\n    },\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "profile"]
+            },
+            "description": "Get current user profile (requires authentication)"
+          },
+          "response": [
+            {
+              "name": "Profile Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": {\n      \"id\": 1,\n      \"email\": \"user@example.com\",\n      \"name\": \"Test User\",\n      \"isActive\": true,\n      \"createdAt\": \"2025-08-17T16:00:00.000Z\",\n      \"updatedAt\": \"2025-08-17T16:00:00.000Z\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "Refresh JWT token (requires authentication)"
+          },
+          "response": [
+            {
+              "name": "Token Refresh Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"Token refreshed successfully\",\n  \"data\": {\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "Logout user (requires authentication)"
+          },
+          "response": [
+            {
+              "name": "Logout Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"Logout successful\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "URL Management",
+      "item": [
+        {
+          "name": "Create Short URL (Anonymous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.shortCode) {",
+                  "        pm.collectionVariables.set('short_code', response.data.shortCode);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalUrl\": \"https://www.example.com\",\n  \"title\": \"Example Website\",\n  \"description\": \"A sample website for testing\",\n  \"customAlias\": \"example\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls"]
+            },
+            "description": "Create a short URL without authentication"
+          },
+          "response": [
+            {
+              "name": "URL Creation Success",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"success\": true,\n  \"message\": \"URL shortened successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"shortCode\": \"abc123\",\n    \"originalUrl\": \"https://www.example.com\",\n    \"shortUrl\": \"http://localhost:3000/abc123\",\n    \"title\": \"Example Website\",\n    \"description\": \"A sample website for testing\",\n    \"customAlias\": \"example\",\n    \"clickCount\": 0,\n    \"createdAt\": \"2025-08-17T16:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Short URL (Authenticated)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.shortCode) {",
+                  "        pm.collectionVariables.set('short_code', response.data.shortCode);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalUrl\": \"https://www.github.com\",\n  \"title\": \"GitHub\",\n  \"description\": \"Code repository platform\",\n  \"customDomain\": \"short.example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls"]
+            },
+            "description": "Create a short URL with authentication (associates with user)"
+          },
+          "response": [
+            {
+              "name": "Authenticated URL Creation",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"success\": true,\n  \"message\": \"URL shortened successfully\",\n  \"data\": {\n    \"id\": 2,\n    \"shortCode\": \"def456\",\n    \"originalUrl\": \"https://www.github.com\",\n    \"shortUrl\": \"http://localhost:3000/def456\",\n    \"title\": \"GitHub\",\n    \"description\": \"Code repository platform\",\n    \"customDomain\": \"short.example.com\",\n    \"userId\": 1,\n    \"clickCount\": 0,\n    \"createdAt\": \"2025-08-17T16:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Password-Protected URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.shortCode) {",
+                  "        pm.collectionVariables.set('short_code', response.data.shortCode);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalUrl\": \"https://www.secret-site.com\",\n  \"title\": \"Secret Site\",\n  \"description\": \"Password protected content\",\n  \"password\": \"mySecretPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls"]
+            },
+            "description": "Create a password-protected short URL"
+          },
+          "response": [
+            {
+              "name": "Password-Protected URL Created",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"success\": true,\n  \"message\": \"URL shortened successfully\",\n  \"data\": {\n    \"id\": 3,\n    \"shortCode\": \"ghi789\",\n    \"originalUrl\": \"https://www.secret-site.com\",\n    \"shortUrl\": \"http://localhost:3000/ghi789\",\n    \"title\": \"Secret Site\",\n    \"description\": \"Password protected content\",\n    \"hasPassword\": true,\n    \"userId\": 1,\n    \"clickCount\": 0,\n    \"createdAt\": \"2025-08-17T16:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify URL Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"mySecretPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls/{{short_code}}/verify-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls", "{{short_code}}", "verify-password"]
+            },
+            "description": "Verify password for a password-protected URL"
+          },
+          "response": [
+            {
+              "name": "Password Verification Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"Password verified successfully\",\n  \"data\": {\n    \"originalUrl\": \"https://www.secret-site.com\",\n    \"title\": \"Secret Site\",\n    \"description\": \"Password protected content\"\n  }\n}"
+            },
+            {
+              "name": "Invalid Password",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"success\": false,\n  \"message\": \"Invalid password\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get URL Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls", "{{short_code}}"]
+            },
+            "description": "Get details of a specific URL by short code"
+          },
+          "response": [
+            {
+              "name": "URL Details Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": 1,\n    \"shortCode\": \"abc123\",\n    \"originalUrl\": \"https://www.example.com\",\n    \"shortUrl\": \"http://localhost:3000/abc123\",\n    \"title\": \"Example Website\",\n    \"description\": \"A sample website for testing\",\n    \"clickCount\": 5,\n    \"createdAt\": \"2025-08-17T16:00:00.000Z\",\n    \"updatedAt\": \"2025-08-17T16:05:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Redirect to Original URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{short_code}}"]
+            },
+            "description": "Redirect to the original URL using short code"
+          },
+          "response": [
+            {
+              "name": "Successful Redirect",
+              "status": "Found",
+              "code": 302,
+              "header": [
+                {
+                  "key": "Location",
+                  "value": "https://www.example.com"
+                }
+              ]
+            },
+            {
+              "name": "Password Protected URL",
+              "status": "Locked",
+              "code": 423,
+              "body": "{\n  \"success\": false,\n  \"message\": \"This URL is password protected. Please provide the password to access.\",\n  \"data\": {\n    \"shortCode\": \"ghi789\",\n    \"title\": \"Secret Site\",\n    \"description\": \"Password protected content\",\n    \"requiresPassword\": true\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "QR Code Generation",
+      "item": [
+        {
+          "name": "Generate QR Code (PNG)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"size\": 256,\n  \"color\": \"#000000\",\n  \"backgroundColor\": \"#ffffff\",\n  \"format\": \"PNG\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}"]
+            },
+            "description": "Generate a PNG QR code for a short URL"
+          },
+          "response": [
+            {
+              "name": "QR Code Generated (PNG)",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"QR code generated successfully\",\n  \"data\": {\n    \"qrCode\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...\",\n    \"format\": \"PNG\",\n    \"size\": 256,\n    \"shortUrl\": \"http://localhost:3000/abc123\",\n    \"originalUrl\": \"https://www.example.com\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Generate QR Code (SVG)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"size\": 512,\n  \"color\": \"#FF0000\",\n  \"backgroundColor\": \"#FFFFFF\",\n  \"format\": \"SVG\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}"]
+            },
+            "description": "Generate an SVG QR code for a short URL"
+          },
+          "response": [
+            {
+              "name": "QR Code Generated (SVG)",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"QR code generated successfully\",\n  \"data\": {\n    \"qrCode\": \"<svg version=\\\"1.1\\\" xmlns=\\\"http://www.w3.org/2000/svg\\\"...\",\n    \"format\": \"SVG\",\n    \"size\": 512,\n    \"shortUrl\": \"http://localhost:3000/abc123\",\n    \"originalUrl\": \"https://www.example.com\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Generate QR Code with Custom Colors",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"size\": 400,\n  \"color\": \"#2563eb\",\n  \"backgroundColor\": \"#f1f5f9\",\n  \"format\": \"PNG\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}"]
+            },
+            "description": "Generate a QR code with custom colors (blue on light gray)"
+          },
+          "response": [
+            {
+              "name": "Custom Color QR Code",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"QR code generated successfully\",\n  \"data\": {\n    \"qrCode\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...\",\n    \"format\": \"PNG\",\n    \"size\": 400,\n    \"shortUrl\": \"http://localhost:3000/abc123\",\n    \"originalUrl\": \"https://www.example.com\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Download QR Code (PNG)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}/download?format=PNG&size=256&color=%23000000&backgroundColor=%23ffffff",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}", "download"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "PNG"
+                },
+                {
+                  "key": "size",
+                  "value": "256"
+                },
+                {
+                  "key": "color",
+                  "value": "%23000000"
+                },
+                {
+                  "key": "backgroundColor",
+                  "value": "%23ffffff"
+                }
+              ]
+            },
+            "description": "Download QR code as PNG file"
+          },
+          "response": [
+            {
+              "name": "QR Code Download",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "image/png"
+                },
+                {
+                  "key": "Content-Disposition",
+                  "value": "attachment; filename=\"qr-abc123.png\""
+                }
+              ],
+              "body": "[Binary PNG data]"
+            }
+          ]
+        },
+        {
+          "name": "Download QR Code (SVG)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}/download?format=SVG&size=512&color=%23FF0000&backgroundColor=%23FFFFFF",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}", "download"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "SVG"
+                },
+                {
+                  "key": "size",
+                  "value": "512"
+                },
+                {
+                  "key": "color",
+                  "value": "%23FF0000"
+                },
+                {
+                  "key": "backgroundColor",
+                  "value": "%23FFFFFF"
+                }
+              ]
+            },
+            "description": "Download QR code as SVG file"
+          },
+          "response": [
+            {
+              "name": "SVG QR Code Download",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "image/svg+xml"
+                },
+                {
+                  "key": "Content-Disposition",
+                  "value": "attachment; filename=\"qr-abc123.svg\""
+                }
+              ],
+              "body": "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\"...>"
+            }
+          ]
+        },
+        {
+          "name": "Get QR Code Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}", "stats"]
+            },
+            "description": "Get statistics for QR code usage"
+          },
+          "response": [
+            {
+              "name": "QR Code Statistics",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"shortCode\": \"abc123\",\n    \"originalUrl\": \"https://www.example.com\",\n    \"clickCount\": 15,\n    \"createdAt\": \"2025-08-17T16:00:00.000Z\",\n    \"recentAnalytics\": [\n      {\n        \"id\": 1,\n        \"ipAddress\": \"192.168.1.1\",\n        \"userAgent\": \"Mozilla/5.0...\",\n        \"referer\": \"https://google.com\",\n        \"country\": \"US\",\n        \"city\": \"New York\",\n        \"clickedAt\": \"2025-08-17T16:05:00.000Z\"\n      }\n    ]\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error Examples",
+      "item": [
+        {
+          "name": "Invalid URL Format",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalUrl\": \"not-a-valid-url\",\n  \"title\": \"Invalid URL Test\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls"]
+            },
+            "description": "Example of validation error for invalid URL format"
+          },
+          "response": [
+            {
+              "name": "Validation Error",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"originalUrl\",\n      \"message\": \"Please provide a valid URL\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Unauthorized Access",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "profile"]
+            },
+            "description": "Example of unauthorized access without token"
+          },
+          "response": [
+            {
+              "name": "Unauthorized Error",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"success\": false,\n  \"message\": \"Access denied. No token provided\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "URL Not Found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nonexistent",
+              "host": ["{{base_url}}"],
+              "path": ["nonexistent"]
+            },
+            "description": "Example of accessing non-existent short code"
+          },
+          "response": [
+            {
+              "name": "Not Found Error",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"success\": false,\n  \"message\": \"URL not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "QR Code Validation Error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"size\": 32,\n  \"color\": \"invalid-color\",\n  \"format\": \"INVALID\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/qr/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "qr", "{{short_code}}"]
+            },
+            "description": "Example of QR code validation errors"
+          },
+          "response": [
+            {
+              "name": "QR Validation Error",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"size\",\n      \"message\": \"Size must be between 64 and 2048 pixels\"\n    },\n    {\n      \"field\": \"color\",\n      \"message\": \"Color must be a valid hex color code\"\n    },\n    {\n      \"field\": \"format\",\n      \"message\": \"Format must be either PNG or SVG\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
