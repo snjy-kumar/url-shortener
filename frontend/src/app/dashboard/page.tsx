@@ -3,509 +3,556 @@
 import React, { useState, useEffect } from "react";
 import {
   Plus,
-  BarChart3,
-  Link,
-  Settings,
-  User,
   Search,
   Filter,
   Download,
-  ExternalLink,
-  Copy,
-  Edit,
-  Trash2,
+  Settings,
+  LogOut,
+  User,
+  BarChart3,
+  Link,
   QrCode,
-  Eye,
+  Globe,
+  Lock,
   Calendar,
   TrendingUp,
+  Eye,
+  MousePointer,
 } from "lucide-react";
-import { format } from "date-fns";
-import toast from "react-hot-toast";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { urlService } from "@/services/urlService";
-import { Url, UrlListResponse } from "@/types";
-import { EnhancedUrlShortener } from "@/components/EnhancedUrlShortener";
-import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
-import { PersonalizedRecommendations } from "@/components/PersonalizedRecommendations";
-import { QRCodeGenerator } from "@/components/QRCodeGenerator";
+  DialogTrigger,
+} from "../../components/ui/dialog";
 
-export default function Dashboard() {
-  const [urls, setUrls] = useState<Url[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedUrl, setSelectedUrl] = useState<Url | null>(null);
-  const [activeTab, setActiveTab] = useState("create");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalCount: 0,
-    hasNext: false,
-    hasPrev: false,
-  });
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showQRGenerator, setShowQRGenerator] = useState(false);
-  const [qrUrl, setQrUrl] = useState<Url | null>(null);
+import { useAuth, ProtectedRoute } from "../../contexts/AuthContext";
+import { EnhancedUrlShortener } from "../../components/enhanced/EnhancedUrlShortener";
+import { UrlService, QRCodeService, UrlUtils } from "../../services/urlService";
+import { Url, UrlFilters, PaginationParams } from "../../types";
+import toast from "react-hot-toast";
 
-  useEffect(() => {
-    const loadUrls = async () => {
-      setIsLoading(true);
-      try {
-        const response: UrlListResponse = await urlService.getUrls(
-          pagination.currentPage,
-          10,
-          "createdAt",
-          "desc"
-        );
+// ==================== URL LIST COMPONENT ====================
 
-        if (response.success && response.data) {
-          setUrls(response.data.urls);
-          setPagination(response.data.pagination);
-        }
-      } catch (error) {
-        // Fallback mock data for demonstration
-        const mockUrls: Url[] = [
-          {
-            id: "1",
-            shortCode: "abc123",
-            originalUrl:
-              "https://example.com/very-long-url-that-needs-shortening",
-            shortUrl: "https://short.ly/abc123",
-            customAlias: "example-link",
-            description: "Example demonstration link",
-            clickCount: 142,
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: "2",
-            shortCode: "xyz789",
-            originalUrl: "https://docs.example.com/api/documentation",
-            shortUrl: "https://short.ly/xyz789",
-            customAlias: "api-docs",
-            description: "API Documentation",
-            clickCount: 89,
-            isActive: true,
-            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: "3",
-            shortCode: "def456",
-            originalUrl: "https://blog.example.com/how-to-use-url-shortener",
-            shortUrl: "https://short.ly/def456",
-            description: "Blog post about URL shortening",
-            clickCount: 234,
-            isActive: true,
-            expiresAt: new Date(
-              Date.now() + 7 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-            createdAt: new Date(
-              Date.now() - 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-            updatedAt: new Date(
-              Date.now() - 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          },
-        ];
-        setUrls(mockUrls);
-        setPagination({
-          currentPage: 1,
-          totalPages: 1,
-          totalCount: mockUrls.length,
-          hasNext: false,
-          hasPrev: false,
-        });
-        console.warn("Using mock URLs data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+interface UrlListProps {
+  urls: Url[];
+  onEdit: (url: Url) => void;
+  onDelete: (url: Url) => void;
+  onGenerateQR: (url: Url) => void;
+  isLoading?: boolean;
+}
 
-    loadUrls();
-  }, [pagination.currentPage, searchTerm]);
-
-  const handleUrlCreated = (newUrl: Url) => {
-    setUrls((prev) => [newUrl, ...prev]);
-    toast.success("URL created successfully!");
-  };
-
-  const handleCopyUrl = async (url: string) => {
+const UrlList: React.FC<UrlListProps> = ({
+  urls,
+  onEdit,
+  onDelete,
+  onGenerateQR,
+  isLoading = false,
+}) => {
+  const copyToClipboard = async (text: string, label: string = "Link") => {
     try {
-      await navigator.clipboard.writeText(url);
-      toast.success("URL copied to clipboard!");
-    } catch {
-      toast.error("Failed to copy URL");
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard!`);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      toast.error("Failed to copy to clipboard");
     }
   };
 
-  const handleDeleteUrl = async (shortCode: string) => {
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="animate-pulse">
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (urls.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center">
+          <Link className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No URLs yet
+          </h3>
+          <p className="text-gray-600 mb-4">
+            Create your first short URL to get started
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {urls.map((url) => (
+        <Card key={url.id} className="hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                {/* URL Title and Description */}
+                <div className="mb-3">
+                  <h3 className="text-lg font-medium text-gray-900 truncate">
+                    {url.title || url.shortCode}
+                  </h3>
+                  {url.description && (
+                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                      {url.description}
+                    </p>
+                  )}
+                </div>
+
+                {/* URLs */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      Short:
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(url.shortUrl)}
+                      className="text-blue-600 hover:text-blue-800 font-mono text-sm truncate"
+                    >
+                      {url.shortUrl}
+                    </button>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      Original:
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(url.originalUrl)}
+                      className="text-gray-600 hover:text-gray-800 text-sm truncate"
+                    >
+                      {UrlUtils.truncateUrl(url.originalUrl, 60)}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Metadata Badges */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {url.hasPassword && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Lock className="w-3 h-3 mr-1" />
+                      Protected
+                    </Badge>
+                  )}
+                  {url.customDomain && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Globe className="w-3 h-3 mr-1" />
+                      Custom Domain
+                    </Badge>
+                  )}
+                  {url.expiresAt && (
+                    <Badge
+                      variant={
+                        UrlUtils.isExpired(url.expiresAt)
+                          ? "destructive"
+                          : "secondary"
+                      }
+                      className="text-xs"
+                    >
+                      <Calendar className="w-3 h-3 mr-1" />
+                      {UrlUtils.isExpired(url.expiresAt)
+                        ? "Expired"
+                        : "Expires"}
+                    </Badge>
+                  )}
+                  <Badge
+                    variant={url.isActive ? "default" : "secondary"}
+                    className="text-xs"
+                  >
+                    {url.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+
+                {/* Stats */}
+                <div className="flex items-center space-x-4 text-sm text-gray-600">
+                  <div className="flex items-center space-x-1">
+                    <MousePointer className="w-4 h-4" />
+                    <span>
+                      {UrlUtils.formatClickCount(url.clickCount)} clicks
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      Created {UrlUtils.getRelativeTime(url.createdAt)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center space-x-2 ml-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onGenerateQR(url)}
+                >
+                  <QrCode className="w-4 h-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(url.shortUrl, "_blank")}
+                >
+                  <Eye className="w-4 h-4" />
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => onEdit(url)}>
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+// ==================== MAIN DASHBOARD COMPONENT ====================
+
+export default function DashboardPage() {
+  const [urls, setUrls] = useState<Url[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingUrl, setEditingUrl] = useState<Url | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const { user, logout } = useAuth();
+
+  // Load URLs
+  const loadUrls = async (page: number = 1, search?: string) => {
+    try {
+      setIsLoading(true);
+
+      const params: PaginationParams & UrlFilters = {
+        page,
+        limit: 10,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      };
+
+      if (search) {
+        params.search = search;
+      }
+
+      const response = await UrlService.getUrls(params);
+
+      if (response.success && response.data) {
+        setUrls(response.data.urls);
+        setCurrentPage(response.data.pagination.currentPage);
+        setTotalPages(response.data.pagination.totalPages);
+      }
+    } catch (error) {
+      console.error("Failed to load URLs:", error);
+      toast.error("Failed to load URLs");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadUrls();
+  }, []);
+
+  // Search
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      loadUrls(1, searchQuery);
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
+
+  const handleUrlCreated = (url: Url) => {
+    setUrls((prev) => [url, ...prev]);
+    setShowCreateDialog(false);
+    setEditingUrl(null);
+    toast.success("URL created successfully!");
+  };
+
+  const handleUrlUpdated = (url: Url) => {
+    setUrls((prev) => prev.map((u) => (u.id === url.id ? url : u)));
+    setEditingUrl(null);
+    toast.success("URL updated successfully!");
+  };
+
+  const handleDelete = async (url: Url) => {
     if (!confirm("Are you sure you want to delete this URL?")) return;
 
     try {
-      await urlService.deleteUrl(shortCode);
-      setUrls((prev) => prev.filter((url) => url.shortCode !== shortCode));
+      await UrlService.deleteUrl(url.id);
+      setUrls((prev) => prev.filter((u) => u.id !== url.id));
       toast.success("URL deleted successfully!");
-    } catch {
+    } catch (error) {
+      console.error("Failed to delete URL:", error);
       toast.error("Failed to delete URL");
     }
   };
 
-  const openAnalytics = (url: Url) => {
-    setSelectedUrl(url);
-    setShowAnalytics(true);
+  const handleGenerateQR = async (url: Url) => {
+    try {
+      const response = await QRCodeService.generateQRCode({
+        shortCode: url.shortCode,
+        size: 256,
+        format: "PNG",
+      });
+
+      if (response.success && response.data) {
+        // Create download link
+        const blob = await QRCodeService.downloadQRCode(url.shortCode, "PNG");
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = `${url.shortCode}-qr.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+
+        toast.success("QR code downloaded!");
+      }
+    } catch (error) {
+      console.error("Failed to generate QR code:", error);
+      toast.error("Failed to generate QR code");
+    }
   };
 
-  const openQRGenerator = (url: Url) => {
-    setQrUrl(url);
-    setShowQRGenerator(true);
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = "/";
   };
-
-  const filteredUrls = urls.filter(
-    (url) =>
-      url.originalUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      url.customAlias?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      url.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const totalClicks = urls.reduce((sum, url) => sum + url.clickCount, 0);
-  const activeUrls = urls.filter((url) => url.isActive).length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Link className="w-8 h-8 text-blue-600" />
-                <h1 className="text-2xl font-bold text-gray-900">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center">
+                <Link className="w-8 h-8 text-blue-600 mr-3" />
+                <h1 className="text-xl font-semibold text-gray-900">
                   URL Shortener
                 </h1>
               </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
-              <Button variant="outline" size="sm">
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
+
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600">
+                  Welcome, {user?.name || user?.email}
+                </span>
+                <Button
+                  variant="outline"
+                  onClick={handleLogout}
+                  className="flex items-center space-x-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Dashboard Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">
-                    Total URLs
-                  </p>
-                  <p className="text-2xl font-bold">{urls.length}</p>
-                </div>
-                <Link className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">
-                    Total Clicks
-                  </p>
-                  <p className="text-2xl font-bold">
-                    {totalClicks.toLocaleString()}
-                  </p>
-                </div>
-                <TrendingUp className="w-8 h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">
-                    Active URLs
-                  </p>
-                  <p className="text-2xl font-bold">{activeUrls}</p>
-                </div>
-                <Eye className="w-8 h-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">
-                    Avg. Clicks
-                  </p>
-                  <p className="text-2xl font-bold">
-                    {urls.length > 0
-                      ? Math.round(totalClicks / urls.length)
-                      : 0}
-                  </p>
-                </div>
-                <BarChart3 className="w-8 h-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        </header>
 
         {/* Main Content */}
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-6"
-        >
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="create" className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Create URL
-            </TabsTrigger>
-            <TabsTrigger value="manage" className="flex items-center gap-2">
-              <Link className="w-4 h-4" />
-              Manage URLs
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Analytics
-            </TabsTrigger>
-            <TabsTrigger
-              value="recommendations"
-              className="flex items-center gap-2"
-            >
-              <TrendingUp className="w-4 h-4" />
-              Recommendations
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="create" className="space-y-6">
-            <EnhancedUrlShortener onUrlCreated={handleUrlCreated} />
-          </TabsContent>
-
-          <TabsContent value="manage" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <CardTitle>Manage URLs</CardTitle>
-                    <CardDescription>
-                      View and manage all your shortened URLs
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="relative">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <Input
-                        placeholder="Search URLs..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 w-64"
-                      />
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <Filter className="w-4 h-4 mr-2" />
-                      Filter
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Download className="w-4 h-4 mr-2" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : filteredUrls.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Link className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500 mb-4">No URLs found</p>
-                    <Button onClick={() => setActiveTab("create")}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First URL
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredUrls.map((url) => (
-                      <div
-                        key={url.id}
-                        className="border rounded-lg p-4 hover:bg-gray-50"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="font-semibold text-gray-900">
-                                {url.customAlias || url.shortCode}
-                              </h3>
-                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                {url.clickCount} clicks
-                              </span>
-                              {url.expiresAt && (
-                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                  <Calendar className="w-3 h-3 inline mr-1" />
-                                  Expires{" "}
-                                  {format(new Date(url.expiresAt), "MMM dd")}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-600 mb-2">
-                              {url.originalUrl}
-                            </p>
-                            <p className="text-sm font-mono text-blue-600 mb-2">
-                              {url.shortUrl}
-                            </p>
-                            {url.description && (
-                              <p className="text-sm text-gray-500">
-                                {url.description}
-                              </p>
-                            )}
-                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                              <span>
-                                Created{" "}
-                                {format(
-                                  new Date(url.createdAt),
-                                  "MMM dd, yyyy"
-                                )}
-                              </span>
-                              <span>
-                                Updated{" "}
-                                {format(
-                                  new Date(url.updatedAt),
-                                  "MMM dd, yyyy"
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCopyUrl(url.shortUrl)}
-                            >
-                              <Copy className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                window.open(url.shortUrl, "_blank")
-                              }
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openQRGenerator(url)}
-                            >
-                              <QrCode className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openAnalytics(url)}
-                            >
-                              <BarChart3 className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDeleteUrl(url.shortCode)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="analytics" className="space-y-6">
-            {selectedUrl ? (
-              <AnalyticsDashboard url={selectedUrl} />
-            ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-8">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <Card>
-                <CardContent className="p-6 text-center">
-                  <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">
-                    Select a URL to view its analytics
-                  </p>
-                  <Button onClick={() => setActiveTab("manage")}>
-                    Go to Manage URLs
-                  </Button>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-600">
+                        Total URLs
+                      </p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {urls.length}
+                      </p>
+                    </div>
+                    <Link className="w-8 h-8 text-blue-600" />
+                  </div>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-600">
+                        Total Clicks
+                      </p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {UrlUtils.formatClickCount(
+                          urls.reduce((sum, url) => sum + url.clickCount, 0)
+                        )}
+                      </p>
+                    </div>
+                    <MousePointer className="w-8 h-8 text-green-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-600">
+                        Active URLs
+                      </p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {urls.filter((url) => url.isActive).length}
+                      </p>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-orange-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-600">
+                        Protected URLs
+                      </p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {urls.filter((url) => url.hasPassword).length}
+                      </p>
+                    </div>
+                    <Lock className="w-8 h-8 text-purple-600" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                  <Input
+                    placeholder="Search URLs..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 w-80"
+                  />
+                </div>
+              </div>
+
+              <Dialog
+                open={showCreateDialog}
+                onOpenChange={setShowCreateDialog}
+              >
+                <DialogTrigger asChild>
+                  <Button className="flex items-center space-x-2">
+                    <Plus className="w-4 h-4" />
+                    <span>Create Short URL</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Create New Short URL</DialogTitle>
+                    <DialogDescription>
+                      Create a new short URL with advanced features and
+                      customization options.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <EnhancedUrlShortener onUrlCreated={handleUrlCreated} />
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* URL List */}
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Your URLs
+                </h2>
+              </div>
+
+              <UrlList
+                urls={urls}
+                onEdit={setEditingUrl}
+                onDelete={handleDelete}
+                onGenerateQR={handleGenerateQR}
+                isLoading={isLoading}
+              />
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center space-x-2 mt-8">
+                  <Button
+                    variant="outline"
+                    onClick={() => loadUrls(currentPage - 1, searchQuery)}
+                    disabled={currentPage <= 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => loadUrls(currentPage + 1, searchQuery)}
+                    disabled={currentPage >= totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+
+        {/* Edit URL Dialog */}
+        <Dialog open={!!editingUrl} onOpenChange={() => setEditingUrl(null)}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit URL</DialogTitle>
+              <DialogDescription>
+                Update your URL settings and configuration.
+              </DialogDescription>
+            </DialogHeader>
+            {editingUrl && (
+              <EnhancedUrlShortener
+                editingUrl={editingUrl}
+                onUrlCreated={handleUrlUpdated}
+                onCancelEdit={() => setEditingUrl(null)}
+              />
             )}
-          </TabsContent>
-
-          <TabsContent value="recommendations" className="space-y-6">
-            <PersonalizedRecommendations onUrlCreated={handleUrlCreated} />
-          </TabsContent>
-        </Tabs>
+          </DialogContent>
+        </Dialog>
       </div>
-
-      {/* Analytics Modal */}
-      <Dialog open={showAnalytics} onOpenChange={setShowAnalytics}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Analytics Dashboard</DialogTitle>
-          </DialogHeader>
-          {selectedUrl && <AnalyticsDashboard url={selectedUrl} />}
-        </DialogContent>
-      </Dialog>
-
-      {/* QR Code Generator Modal */}
-      {showQRGenerator && qrUrl && (
-        <QRCodeGenerator
-          shortCode={qrUrl.shortCode}
-          shortUrl={qrUrl.shortUrl}
-          isOpen={showQRGenerator}
-          onClose={() => setShowQRGenerator(false)}
-        />
-      )}
-    </div>
+    </ProtectedRoute>
   );
 }

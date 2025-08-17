@@ -282,9 +282,9 @@
               "raw": "{\n  \"originalUrl\": \"https://www.example.com\",\n  \"title\": \"Example Website\",\n  \"description\": \"A sample website for testing\",\n  \"customAlias\": \"example\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/urls",
+              "raw": "{{base_url}}/api/v1/urls/shorten",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "urls"]
+              "path": ["api", "v1", "urls", "shorten"]
             },
             "description": "Create a short URL without authentication"
           },
@@ -337,9 +337,9 @@
               "raw": "{\n  \"originalUrl\": \"https://www.github.com\",\n  \"title\": \"GitHub\",\n  \"description\": \"Code repository platform\",\n  \"customDomain\": \"short.example.com\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/urls",
+              "raw": "{{base_url}}/api/v1/urls/shorten",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "urls"]
+              "path": ["api", "v1", "urls", "shorten"]
             },
             "description": "Create a short URL with authentication (associates with user)"
           },
@@ -392,9 +392,9 @@
               "raw": "{\n  \"originalUrl\": \"https://www.secret-site.com\",\n  \"title\": \"Secret Site\",\n  \"description\": \"Password protected content\",\n  \"password\": \"mySecretPassword123\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/urls",
+              "raw": "{{base_url}}/api/v1/urls/shorten",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "urls"]
+              "path": ["api", "v1", "urls", "shorten"]
             },
             "description": "Create a password-protected short URL"
           },
@@ -493,6 +493,139 @@
               "status": "Locked",
               "code": 423,
               "body": "{\n  \"success\": false,\n  \"message\": \"This URL is password protected. Please provide the password to access.\",\n  \"data\": {\n    \"shortCode\": \"ghi789\",\n    \"title\": \"Secret Site\",\n    \"description\": \"Password protected content\",\n    \"requiresPassword\": true\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List URLs",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "List URLs with pagination (requires authentication)"
+          },
+          "response": [
+            {
+              "name": "URLs List Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"urls\": [\n      {\n        \"id\": 1,\n        \"shortCode\": \"abc123\",\n        \"originalUrl\": \"https://www.example.com\",\n        \"title\": \"Example Website\",\n        \"clickCount\": 5,\n        \"createdAt\": \"2025-08-17T16:00:00.000Z\"\n      }\n    ],\n    \"pagination\": {\n      \"page\": 1,\n      \"limit\": 10,\n      \"total\": 1,\n      \"totalPages\": 1\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get URL Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls/{{short_code}}/analytics",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls", "{{short_code}}", "analytics"]
+            },
+            "description": "Get analytics data for a specific URL"
+          },
+          "response": [
+            {
+              "name": "Analytics Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"url\": {\n      \"shortCode\": \"abc123\",\n      \"originalUrl\": \"https://www.example.com\",\n      \"clickCount\": 15\n    },\n    \"analytics\": [\n      {\n        \"id\": 1,\n        \"ipAddress\": \"192.168.1.1\",\n        \"userAgent\": \"Mozilla/5.0...\",\n        \"referer\": \"https://google.com\",\n        \"country\": \"US\",\n        \"city\": \"New York\",\n        \"clickedAt\": \"2025-08-17T16:05:00.000Z\"\n      }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update URL",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Title\",\n  \"description\": \"Updated description\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls", "{{short_code}}"]
+            },
+            "description": "Update URL details (requires authentication and ownership)"
+          },
+          "response": [
+            {
+              "name": "Update Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"URL updated successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"shortCode\": \"abc123\",\n    \"originalUrl\": \"https://www.example.com\",\n    \"title\": \"Updated Title\",\n    \"description\": \"Updated description\",\n    \"isActive\": true,\n    \"updatedAt\": \"2025-08-17T16:10:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete URL",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auth_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/urls/{{short_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "urls", "{{short_code}}"]
+            },
+            "description": "Delete URL (requires authentication and ownership)"
+          },
+          "response": [
+            {
+              "name": "Delete Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"message\": \"URL deleted successfully\"\n}"
             }
           ]
         }
@@ -730,9 +863,9 @@
               "raw": "{\n  \"originalUrl\": \"not-a-valid-url\",\n  \"title\": \"Invalid URL Test\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/urls",
+              "raw": "{{base_url}}/api/v1/urls/shorten",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "urls"]
+              "path": ["api", "v1", "urls", "shorten"]
             },
             "description": "Example of validation error for invalid URL format"
           },
