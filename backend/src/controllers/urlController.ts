@@ -3,6 +3,7 @@ import { UrlService } from '../services/urlService';
 import { CreateUrlRequest, AuthenticatedRequest } from '../types';
 import { logger } from '../utils/logger';
 import { prisma } from '../config/database';
+import { EnhancedPasswordService } from '../services/enhancedPasswordService';
 
 export class UrlController {
   /**
@@ -263,10 +264,44 @@ export class UrlController {
         return;
       }
 
-      const isValid = await UrlService.verifyUrlPassword(shortCode, password);
+      const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+      const userAgent = req.get('User-Agent');
 
-      if (!isValid) {
-        res.status(401).json({ success: false, message: 'Invalid password' });
+      // Check if already verified for this IP
+      const alreadyVerified = await EnhancedPasswordService.isPasswordVerified(
+        shortCode,
+        ipAddress
+      );
+      if (alreadyVerified) {
+        const originalUrl = await UrlService.getOriginalUrl(shortCode);
+        if (originalUrl) {
+          res.json({
+            success: true,
+            message: 'Password already verified',
+            data: { originalUrl },
+          });
+          return;
+        }
+      }
+
+      // Verify password with rate limiting
+      const result = await EnhancedPasswordService.verifyPasswordWithRateLimit(
+        shortCode,
+        password,
+        ipAddress,
+        userAgent
+      );
+
+      if (!result.success) {
+        const status = result.lockoutTime ? 429 : 401;
+        res.status(status).json({
+          success: false,
+          message: result.message,
+          data: {
+            remainingAttempts: result.remainingAttempts,
+            lockoutTime: result.lockoutTime,
+          },
+        });
         return;
       }
 
@@ -281,11 +316,131 @@ export class UrlController {
 
       res.json({
         success: true,
-        message: 'Password verified successfully',
+        message: result.message,
         data: { originalUrl },
       });
     } catch (error) {
       logger.error('Error verifying URL password:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Check password strength
+   * POST /api/v1/urls/check-password-strength
+   */
+  static async checkPasswordStrength(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { password } = req.body;
+
+      if (!password) {
+        res.status(400).json({
+          success: false,
+          message: 'Password is required',
+        });
+        return;
+      }
+
+      const validation = EnhancedPasswordService.validatePassword(password);
+
+      res.json({
+        success: true,
+        data: {
+          valid: validation.valid,
+          errors: validation.errors,
+          strength: validation.strength,
+        },
+      });
+    } catch (error) {
+      logger.error('Error checking password strength:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Generate secure password
+   * POST /api/v1/urls/generate-password
+   */
+  static async generateSecurePassword(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { length = 12 } = req.body;
+
+      if (length < 8 || length > 128) {
+        res.status(400).json({
+          success: false,
+          message: 'Password length must be between 8 and 128 characters',
+        });
+        return;
+      }
+
+      const password =
+        EnhancedPasswordService.generateTemporaryPassword(length);
+      const validation = EnhancedPasswordService.validatePassword(password);
+
+      res.json({
+        success: true,
+        data: {
+          password,
+          strength: validation.strength,
+        },
+      });
+    } catch (error) {
+      logger.error('Error generating secure password:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Update URL password
+   * PUT /api/v1/urls/:shortCode/password
+   */
+  static async updateUrlPassword(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { shortCode } = req.params;
+      const { password } = req.body;
+
+      if (!shortCode) {
+        res.status(400).json({
+          success: false,
+          message: 'Short code is required',
+        });
+        return;
+      }
+
+      const result = await EnhancedPasswordService.updateUrlPassword(
+        shortCode,
+        password
+      );
+
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          message: 'Failed to update password',
+          errors: result.errors,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: password
+          ? 'Password updated successfully'
+          : 'Password removed successfully',
+      });
+    } catch (error) {
+      logger.error('Error updating URL password:', error);
       next(error);
     }
   }
@@ -412,6 +567,241 @@ export class UrlController {
       res.redirect(301, originalUrl);
     } catch (error) {
       logger.error('Error redirecting URL:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Verify password for password-protected URL
+   * POST /:shortCode/verify-password
+   */
+  static async verifyPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { shortCode } = req.params;
+      const { password } = req.body;
+
+      if (!shortCode) {
+        res.status(400).json({
+          success: false,
+          message: 'Short code is required',
+        });
+        return;
+      }
+
+      if (!password) {
+        res.status(400).json({
+          success: false,
+          message: 'Password is required',
+        });
+        return;
+      }
+
+      const result = await EnhancedPasswordService.verifyPasswordWithRateLimit(
+        shortCode,
+        password,
+        req.ip || '',
+        req.get('User-Agent')
+      );
+
+      if (!result.success) {
+        res.status(401).json({
+          success: false,
+          message: result.message,
+          attemptsRemaining: result.remainingAttempts,
+          lockoutExpiry: result.lockoutTime,
+        });
+        return;
+      }
+
+      // Get the original URL for redirect
+      const originalUrl = await UrlService.getOriginalUrl(shortCode);
+      if (!originalUrl) {
+        res.status(404).json({
+          success: false,
+          message: 'URL not found or expired',
+        });
+        return;
+      }
+
+      // Record the click/visit
+      const url = await prisma.url.findFirst({
+        where: {
+          OR: [{ shortCode }, { customAlias: shortCode }],
+          isActive: true,
+        },
+        select: { id: true },
+      });
+
+      if (url) {
+        await UrlService.recordClick(
+          url.id,
+          req.ip,
+          req.get('User-Agent'),
+          req.get('Referer')
+        );
+
+        logger.info('Password-protected URL accessed', {
+          shortCode,
+          originalUrl,
+          ip: req.ip,
+          userAgent: req.get('User-Agent'),
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Password verified successfully',
+        originalUrl: originalUrl,
+      });
+    } catch (error) {
+      logger.error('Error verifying URL password:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Bulk create short URLs
+   * POST /api/v1/urls/bulk
+   */
+  static async bulkCreateUrls(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { urls } = req.body;
+
+      if (!Array.isArray(urls) || urls.length === 0) {
+        res.status(400).json({
+          success: false,
+          message: 'URLs array is required and must not be empty',
+        });
+        return;
+      }
+
+      if (urls.length > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Maximum 100 URLs can be created at once',
+        });
+        return;
+      }
+
+      const results = await UrlService.bulkCreateUrls(urls, req.user?.id);
+
+      res.status(201).json({
+        success: true,
+        message: `Successfully created ${results.successful.length} URLs`,
+        data: {
+          successful: results.successful,
+          failed: results.failed,
+          summary: {
+            total: urls.length,
+            successful: results.successful.length,
+            failed: results.failed.length,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error bulk creating URLs:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Bulk delete URLs
+   * DELETE /api/v1/urls/bulk
+   */
+  static async bulkDeleteUrls(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { shortCodes } = req.body;
+
+      if (!Array.isArray(shortCodes) || shortCodes.length === 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Short codes array is required and must not be empty',
+        });
+        return;
+      }
+
+      if (shortCodes.length > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Maximum 100 URLs can be deleted at once',
+        });
+        return;
+      }
+
+      const results = await UrlService.bulkDeleteUrls(shortCodes, req.user?.id);
+
+      res.json({
+        success: true,
+        message: `Successfully deleted ${results.successful.length} URLs`,
+        data: {
+          successful: results.successful,
+          failed: results.failed,
+          summary: {
+            total: shortCodes.length,
+            successful: results.successful.length,
+            failed: results.failed.length,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error bulk deleting URLs:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Bulk update URLs
+   * PUT /api/v1/urls/bulk
+   */
+  static async bulkUpdateUrls(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { updates } = req.body;
+
+      if (!Array.isArray(updates) || updates.length === 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Updates array is required and must not be empty',
+        });
+        return;
+      }
+
+      if (updates.length > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Maximum 100 URLs can be updated at once',
+        });
+        return;
+      }
+
+      const results = await UrlService.bulkUpdateUrls(updates, req.user?.id);
+
+      res.json({
+        success: true,
+        message: `Successfully updated ${results.successful.length} URLs`,
+        data: {
+          successful: results.successful,
+          failed: results.failed,
+          summary: {
+            total: updates.length,
+            successful: results.successful.length,
+            failed: results.failed.length,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error bulk updating URLs:', error);
       next(error);
     }
   }

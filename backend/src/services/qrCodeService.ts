@@ -1,4 +1,4 @@
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import { prisma } from '../config/database';
 import { logger } from '../utils/logger';
 

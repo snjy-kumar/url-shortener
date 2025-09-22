@@ -65,7 +65,7 @@ Authorization: Bearer {jwt_token}
 
 ### 1. Create Short URL (Anonymous)
 ```http
-POST /api/v1/urls
+POST  
 Content-Type: application/json
 
 {

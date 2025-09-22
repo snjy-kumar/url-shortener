@@ -1,7 +1,6 @@
-import winston from 'winston';
+import * as winston from 'winston';
 import { config } from '../config/env';
-import path from 'path';
-import process from 'process';
+import * as path from 'path';
 
 // Define log levels
 const levels = {
@@ -64,3 +63,89 @@ if (config.NODE_ENV !== 'production') {
 }
 
 export default logger;
+
+// Create a stream for HTTP logging (morgan)
+export const httpLogStream = {
+  write: (message: string) => {
+    logger.info(message.trim());
+  },
+};
+
+// Security logging
+export const securityLogger = {
+  logSecurityEvent: (event: string, details: Record<string, any>) => {
+    logger.warn(`Security Event: ${event}`, {
+      securityEvent: true,
+      event,
+      ...details,
+      timestamp: new Date().toISOString(),
+    });
+  },
+
+  logAuthAttempt: (
+    success: boolean,
+    email?: string,
+    ip?: string,
+    details?: Record<string, any>
+  ) => {
+    const level = success ? 'info' : 'warn';
+    logger[level](`Authentication attempt: ${success ? 'success' : 'failed'}`, {
+      authAttempt: true,
+      success,
+      email,
+      ip,
+      ...details,
+      timestamp: new Date().toISOString(),
+    });
+  },
+
+  logRateLimitViolation: (
+    ip: string,
+    endpoint: string,
+    details?: Record<string, any>
+  ) => {
+    logger.warn('Rate limit violation', {
+      rateLimitViolation: true,
+      ip,
+      endpoint,
+      ...details,
+      timestamp: new Date().toISOString(),
+    });
+  },
+};
+
+// Business logic logging
+export const businessLogger = {
+  logUrlCreated: (urlId: string, userId?: number, customAlias?: string) => {
+    logger.info('URL created', {
+      business: true,
+      action: 'url_created',
+      urlId,
+      userId,
+      customAlias,
+      timestamp: new Date().toISOString(),
+    });
+  },
+
+  logUrlAccessed: (shortCode: string, ip?: string, userAgent?: string) => {
+    logger.info('URL accessed', {
+      business: true,
+      action: 'url_accessed',
+      shortCode,
+      ip,
+      userAgent,
+      timestamp: new Date().toISOString(),
+    });
+  },
+
+  logApiKeyUsed: (apiKeyId: string, endpoint: string, userId?: number) => {
+    logger.info('API key used', {
+      business: true,
+      action: 'api_key_used',
+      apiKeyId,
+      endpoint,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+  },
+};

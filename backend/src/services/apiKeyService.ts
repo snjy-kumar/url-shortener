@@ -1,0 +1,316 @@
+import * as crypto from 'crypto';
+import { prisma } from '../config/database';
+import { logger } from '../utils/logger';
+import { CacheService } from './cacheService';
+
+export interface ApiKeyData {
+  id: number;
+  name: string;
+  key: string;
+  isActive: boolean;
+  lastUsed: Date | null;
+  createdAt: Date;
+  expiresAt: Date | null;
+}
+
+export interface ApiKeyListResponse {
+  apiKeys: Omit<ApiKeyData, 'key'>[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+export class ApiKeyService {
+  /**
+   * Generate a secure API key
+   */
+  private static generateApiKey(): string {
+    // Generate a 32-byte random key and encode as base64url
+    const bytes = crypto.randomBytes(32);
+    return `ask_${bytes.toString('base64url')}`;
+  }
+
+  /**
+   * Create a new API key for a user
+   */
+  static async createApiKey(
+    userId: number,
+    name: string,
+    expiresAt?: string
+  ): Promise<ApiKeyData> {
+    const key = this.generateApiKey();
+    const expiration = expiresAt ? new Date(expiresAt) : null;
+
+    // Validate expiration date
+    if (expiration && expiration <= new Date()) {
+      throw new Error('Expiration date must be in the future');
+    }
+
+    const apiKey = await prisma.apiKey.create({
+      data: {
+        key,
+        name,
+        userId,
+        expiresAt: expiration,
+      },
+    });
+
+    logger.info(`API key created for user ${userId}: ${name}`);
+
+    return {
+      id: apiKey.id,
+      name: apiKey.name,
+      key: apiKey.key,
+      isActive: apiKey.isActive,
+      lastUsed: apiKey.lastUsed,
+      createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
+    };
+  }
+
+  /**
+   * List API keys for a user with pagination
+   */
+  static async listApiKeys(
+    userId: number,
+    page: number = 1,
+    limit: number = 10
+  ): Promise<ApiKeyListResponse> {
+    const skip = (page - 1) * limit;
+
+    const [apiKeys, totalCount] = await Promise.all([
+      prisma.apiKey.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          lastUsed: true,
+          createdAt: true,
+          expiresAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.apiKey.count({
+        where: { userId },
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return {
+      apiKeys,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalCount,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Get a specific API key
+   */
+  static async getApiKey(
+    keyId: number,
+    userId: number
+  ): Promise<Omit<ApiKeyData, 'key'> | null> {
+    const apiKey = await prisma.apiKey.findFirst({
+      where: {
+        id: keyId,
+        userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        lastUsed: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+    });
+
+    return apiKey;
+  }
+
+  /**
+   * Update an API key
+   */
+  static async updateApiKey(
+    keyId: number,
+    userId: number,
+    data: { name?: string; isActive?: boolean }
+  ): Promise<Omit<ApiKeyData, 'key'> | null> {
+    try {
+      const apiKey = await prisma.apiKey.update({
+        where: {
+          id: keyId,
+          userId,
+        },
+        data,
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          lastUsed: true,
+          createdAt: true,
+          expiresAt: true,
+        },
+      });
+
+      logger.info(`API key ${keyId} updated by user ${userId}`);
+      return apiKey;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'P2025') {
+        return null; // Record not found
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an API key
+   */
+  static async deleteApiKey(keyId: number, userId: number): Promise<boolean> {
+    try {
+      await prisma.apiKey.delete({
+        where: {
+          id: keyId,
+          userId,
+        },
+      });
+
+      logger.info(`API key ${keyId} deleted by user ${userId}`);
+      return true;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'P2025') {
+        return false; // Record not found
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Regenerate an API key
+   */
+  static async regenerateApiKey(
+    keyId: number,
+    userId: number
+  ): Promise<ApiKeyData | null> {
+    try {
+      const newKey = this.generateApiKey();
+
+      const apiKey = await prisma.apiKey.update({
+        where: {
+          id: keyId,
+          userId,
+        },
+        data: {
+          key: newKey,
+          lastUsed: null, // Reset last used
+        },
+      });
+
+      logger.info(`API key ${keyId} regenerated by user ${userId}`);
+
+      return {
+        id: apiKey.id,
+        name: apiKey.name,
+        key: apiKey.key,
+        isActive: apiKey.isActive,
+        lastUsed: apiKey.lastUsed,
+        createdAt: apiKey.createdAt,
+        expiresAt: apiKey.expiresAt,
+      };
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'P2025') {
+        return null; // Record not found
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Validate an API key and return user info
+   */
+  static async validateApiKey(
+    key: string
+  ): Promise<{ userId: number; keyId: number } | null> {
+    // Try to get from cache first
+    const cached = await CacheService.getCachedApiKeyValidation(key);
+    if (cached) {
+      return cached;
+    }
+
+    const apiKey = await prisma.apiKey.findUnique({
+      where: { key },
+      include: { user: true },
+    });
+
+    if (!apiKey || !apiKey.isActive || !apiKey.user.isActive) {
+      // Cache negative result for a short time to prevent repeated DB queries
+      await CacheService.cacheApiKeyValidation(key, null);
+      return null;
+    }
+
+    // Check if API key is expired
+    if (apiKey.expiresAt && apiKey.expiresAt <= new Date()) {
+      await CacheService.cacheApiKeyValidation(key, null);
+      return null;
+    }
+
+    // Update last used timestamp
+    await prisma.apiKey.update({
+      where: { id: apiKey.id },
+      data: { lastUsed: new Date() },
+    });
+
+    const result = {
+      userId: apiKey.userId,
+      keyId: apiKey.id,
+    };
+
+    // Cache the validation result
+    await CacheService.cacheApiKeyValidation(key, result);
+
+    return result;
+  }
+
+  /**
+   * Get API key usage statistics
+   */
+  static async getApiKeyStats(keyId: number, userId: number): Promise<any> {
+    const apiKey = await prisma.apiKey.findFirst({
+      where: {
+        id: keyId,
+        userId,
+      },
+    });
+
+    if (!apiKey) {
+      return null;
+    }
+
+    // Count URLs created with this API key (we'd need to track this in URL model)
+    // For now, return basic stats
+    return {
+      id: apiKey.id,
+      name: apiKey.name,
+      createdAt: apiKey.createdAt,
+      lastUsed: apiKey.lastUsed,
+      isActive: apiKey.isActive,
+      expiresAt: apiKey.expiresAt,
+      // TODO: Add usage metrics when we implement API key tracking in URL creation
+      totalRequests: 0,
+      urlsCreated: 0,
+    };
+  }
+}

@@ -8,6 +8,8 @@ import {
 import { CreateUrlRequest, UrlResponse, AuthenticatedRequest } from '../types';
 import bcrypt from 'bcryptjs';
 import { config } from '../config/env';
+import { CacheService } from './cacheService';
+import { EnhancedPasswordService } from './enhancedPasswordService';
 
 export class UrlService {
   /**
@@ -71,10 +73,15 @@ export class UrlService {
     // Hash password if provided
     let hashedPassword: string | null = null;
     if (password) {
-      if (password.length < 4 || password.length > 128) {
-        throw new Error('Password must be between 4 and 128 characters');
+      // Use enhanced password validation
+      const validation = EnhancedPasswordService.validatePassword(password);
+      if (!validation.valid) {
+        throw new Error(
+          `Password validation failed: ${validation.errors.join(', ')}`
+        );
       }
-      hashedPassword = await bcrypt.hash(password, config.BCRYPT_SALT_ROUNDS);
+
+      hashedPassword = await EnhancedPasswordService.hashPassword(password);
     }
 
     // Create expiration date if provided
@@ -237,6 +244,27 @@ export class UrlService {
   static async getUrlByShortCode(
     shortCode: string
   ): Promise<UrlResponse | null> {
+    // Try to get from cache first
+    const cachedUrl = await CacheService.getCachedUrl(shortCode);
+    if (cachedUrl) {
+      // Check if cached URL has expired
+      if (cachedUrl.expiresAt && new Date(cachedUrl.expiresAt) <= new Date()) {
+        await CacheService.invalidateUrl(shortCode);
+        return null;
+      }
+
+      // Get fresh click count and return formatted response
+      const clickCount = await this.getClickCount(cachedUrl.id);
+      return this.formatUrlResponse(
+        {
+          ...cachedUrl,
+          expiresAt: cachedUrl.expiresAt ? new Date(cachedUrl.expiresAt) : null,
+        },
+        clickCount
+      );
+    }
+
+    // If not in cache, get from database
     const url = await prisma.url.findFirst({
       where: {
         OR: [{ shortCode }, { customAlias: shortCode }],
@@ -252,6 +280,22 @@ export class UrlService {
     if (url.expiresAt && url.expiresAt <= new Date()) {
       return null;
     }
+
+    // Cache the URL data for future requests
+    await CacheService.cacheUrl(shortCode, {
+      originalUrl: url.originalUrl,
+      expiresAt: url.expiresAt,
+      isActive: url.isActive,
+      id: url.id,
+      shortCode: url.shortCode,
+      customAlias: url.customAlias,
+      customDomain: url.customDomain,
+      description: url.description,
+      hasPassword: !!url.password,
+      userId: url.userId,
+      createdAt: url.createdAt,
+      updatedAt: url.updatedAt,
+    });
 
     const clickCount = await this.getClickCount(url.id);
     return this.formatUrlResponse(url, clickCount);
@@ -261,6 +305,18 @@ export class UrlService {
    * Get original URL for redirection
    */
   static async getOriginalUrl(shortCode: string): Promise<string | null> {
+    // Try to get from cache first
+    const cachedUrl = await CacheService.getCachedUrl(shortCode);
+    if (cachedUrl) {
+      // Check if cached URL has expired
+      if (cachedUrl.expiresAt && new Date(cachedUrl.expiresAt) <= new Date()) {
+        await CacheService.invalidateUrl(shortCode);
+        return null;
+      }
+      return cachedUrl.originalUrl;
+    }
+
+    // If not in cache, get from database
     const url = await prisma.url.findFirst({
       where: {
         OR: [{ shortCode }, { customAlias: shortCode }],
@@ -276,6 +332,14 @@ export class UrlService {
     if (url.expiresAt && url.expiresAt <= new Date()) {
       return null;
     }
+
+    // Cache the URL data for future requests
+    await CacheService.cacheUrl(shortCode, {
+      originalUrl: url.originalUrl,
+      expiresAt: url.expiresAt,
+      isActive: url.isActive,
+      id: url.id,
+    });
 
     return url.originalUrl;
   }
@@ -388,6 +452,13 @@ export class UrlService {
     }
 
     const updated = await prisma.url.update({ where: { id: url.id }, data });
+
+    // Invalidate cache for the URL
+    await CacheService.invalidateUrl(shortCode);
+    if (url.customAlias && url.customAlias !== shortCode) {
+      await CacheService.invalidateUrl(url.customAlias);
+    }
+
     const clickCount = await this.getClickCount(updated.id);
     return this.formatUrlResponse(updated, clickCount);
   }
@@ -413,7 +484,174 @@ export class UrlService {
       data: { isActive: false },
     });
 
+    // Invalidate cache for the URL
+    await CacheService.invalidateUrl(shortCode);
+    if (url.customAlias && url.customAlias !== shortCode) {
+      await CacheService.invalidateUrl(url.customAlias);
+    }
+
     return true;
+  }
+
+  /**
+   * Bulk create URLs with transaction support
+   */
+  static async bulkCreateUrls(
+    urlsData: CreateUrlRequest[],
+    userId?: number
+  ): Promise<{
+    successful: UrlResponse[];
+    failed: { index: number; error: string; data: CreateUrlRequest }[];
+  }> {
+    const successful: UrlResponse[] = [];
+    const failed: { index: number; error: string; data: CreateUrlRequest }[] =
+      [];
+
+    // Process in batches to avoid overwhelming the database
+    const batchSize = 10;
+    for (let i = 0; i < urlsData.length; i += batchSize) {
+      const batch = urlsData.slice(i, i + batchSize);
+
+      await Promise.all(
+        batch.map(async (urlData, batchIndex) => {
+          const globalIndex = i + batchIndex;
+          try {
+            const result = await this.createShortUrl(urlData, userId);
+            successful.push(result);
+          } catch (error) {
+            failed.push({
+              index: globalIndex,
+              error: error instanceof Error ? error.message : 'Unknown error',
+              data: urlData,
+            });
+          }
+        })
+      );
+    }
+
+    return { successful, failed };
+  }
+
+  /**
+   * Bulk delete URLs
+   */
+  static async bulkDeleteUrls(
+    shortCodes: string[],
+    userId?: number
+  ): Promise<{
+    successful: string[];
+    failed: { shortCode: string; error: string }[];
+  }> {
+    const successful: string[] = [];
+    const failed: { shortCode: string; error: string }[] = [];
+
+    await Promise.all(
+      shortCodes.map(async (shortCode) => {
+        try {
+          // If userId is provided, verify ownership
+          if (userId) {
+            const url = await prisma.url.findFirst({
+              where: {
+                OR: [{ shortCode }, { customAlias: shortCode }],
+                userId,
+                isActive: true,
+              },
+            });
+
+            if (!url) {
+              failed.push({
+                shortCode,
+                error: 'URL not found or not owned by user',
+              });
+              return;
+            }
+          }
+
+          const deleted = await this.deleteUrl(shortCode);
+          if (deleted) {
+            successful.push(shortCode);
+          } else {
+            failed.push({
+              shortCode,
+              error: 'URL not found or already deleted',
+            });
+          }
+        } catch (error) {
+          failed.push({
+            shortCode,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })
+    );
+
+    return { successful, failed };
+  }
+
+  /**
+   * Bulk update URLs
+   */
+  static async bulkUpdateUrls(
+    updates: Array<{
+      shortCode: string;
+      data: Partial<{
+        description: string;
+        expiresAt: string;
+        isActive: boolean;
+        customAlias: string;
+      }>;
+    }>,
+    userId?: number
+  ): Promise<{
+    successful: UrlResponse[];
+    failed: { shortCode: string; error: string }[];
+  }> {
+    const successful: UrlResponse[] = [];
+    const failed: { shortCode: string; error: string }[] = [];
+
+    await Promise.all(
+      updates.map(async (update) => {
+        try {
+          // If userId is provided, verify ownership
+          if (userId) {
+            const url = await prisma.url.findFirst({
+              where: {
+                OR: [
+                  { shortCode: update.shortCode },
+                  { customAlias: update.shortCode },
+                ],
+                userId,
+              },
+            });
+
+            if (!url) {
+              failed.push({
+                shortCode: update.shortCode,
+                error: 'URL not found or not owned by user',
+              });
+              return;
+            }
+          }
+
+          const updated = await this.updateUrl(update.shortCode, update.data);
+          if (updated) {
+            successful.push(updated);
+          } else {
+            failed.push({
+              shortCode: update.shortCode,
+              error: 'URL not found',
+            });
+          }
+        } catch (error) {
+          failed.push({
+            shortCode: update.shortCode,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })
+    );
+
+    return { successful, failed };
   }
 
   /**
