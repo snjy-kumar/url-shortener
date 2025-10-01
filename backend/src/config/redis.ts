@@ -12,7 +12,7 @@ class RedisConfig {
   async connect(): Promise<void> {
     try {
       this.client = createClient({
-        url: config.REDIS_URL || 'redis://localhost:6379',
+        url: config.REDIS_URL || 'redis://localhost:6379',  
         socket: {
           reconnectStrategy: (retries) => {
             if (retries < 3) {
