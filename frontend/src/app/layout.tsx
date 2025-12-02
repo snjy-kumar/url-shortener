@@ -4,6 +4,7 @@ import "./globals.css";
 import { ToastProvider } from "../components/providers/ToastProvider";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Header } from "../components/Header";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
       >
         <ErrorBoundary>
           <AuthProvider>
+            <Header />
             {children}
             <ToastProvider />
           </AuthProvider>

@@ -83,10 +83,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await AuthService.login({ email, password });
 
       if (response.success && response.data) {
-        const { user: userData, token, refreshToken } = response.data;
+        // Extract tokens from response
+        const responseData = response.data as Record<string, unknown>;
+        const accessToken = (responseData.accessToken ||
+          responseData.token) as string;
+        const refreshToken = responseData.refreshToken as string | undefined;
+        const userData = responseData.user as unknown as User;
 
         // Store authentication data
-        TokenManager.setTokens(token, refreshToken);
+        TokenManager.setTokens(accessToken, refreshToken);
         TokenManager.setUser(userData);
 
         // Update state
@@ -96,15 +101,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         toast.success(response.message || "Login successful!");
         return true;
       } else {
-        toast.error(response.message || "Login failed");
+        // Handle special cases
+        const responseData = (response.data || response) as Record<
+          string,
+          unknown
+        >;
+
+        if (responseData.emailVerificationRequired) {
+          toast.error(
+            "Please verify your email before logging in. Check your inbox."
+          );
+        } else if (responseData.twoFactorRequired) {
+          toast.success("2FA code required");
+          // You can handle 2FA UI here
+        } else {
+          toast.error(response.message || "Login failed");
+        }
         return false;
       }
     } catch (error: unknown) {
       console.error("Login error:", error);
-      const errorMessage =
-        (error as { response?: { data?: { message?: string } } })?.response
-          ?.data?.message || "Login failed. Please try again.";
-      toast.error(errorMessage);
+      const errorData = (
+        error as { response?: { data?: Record<string, unknown> } }
+      )?.response?.data;
+
+      if (errorData?.emailVerificationRequired) {
+        toast.error(
+          "Please verify your email before logging in. Check your inbox."
+        );
+      } else if (errorData?.twoFactorRequired) {
+        toast.success("2FA code required");
+      } else if (errorData?.remainingAttempts !== undefined) {
+        toast.error(
+          (errorData.message as string) +
+            ((errorData.remainingAttempts as number) > 0
+              ? ` ${errorData.remainingAttempts} attempts remaining.`
+              : " Account locked.")
+        );
+      } else {
+        const errorMessage =
+          (errorData?.message as string) || "Login failed. Please try again.";
+        toast.error(errorMessage);
+      }
       return false;
     } finally {
       setIsLoading(false);
@@ -121,18 +159,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       const response = await AuthService.register({ email, password, name });
 
-      if (response.success && response.data) {
-        const { user: userData, token, refreshToken } = response.data;
-
-        // Store authentication data
-        TokenManager.setTokens(token, refreshToken);
-        TokenManager.setUser(userData);
-
-        // Update state
-        setUser(userData);
-        setIsAuthenticated(true);
-
-        toast.success(response.message || "Registration successful!");
+      if (response.success) {
+        // Registration successful but email verification required
+        // Don't set authentication state yet
+        toast.success(
+          response.message ||
+            "Registration successful! Please verify your email."
+        );
         return true;
       } else {
         toast.error(response.message || "Registration failed");

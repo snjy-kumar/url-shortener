@@ -77,9 +77,20 @@ export default function RegisterForm() {
     setIsLoading(true);
 
     try {
-      await register(formData.name, formData.email, formData.password);
-      toast.success("Account created successfully! You are now logged in.");
-      router.push("/dashboard");
+      const success = await register(
+        formData.email,
+        formData.password,
+        formData.name
+      );
+      if (success) {
+        toast.success(
+          "Registration successful! Please check your email to verify your account."
+        );
+        // Redirect to a verification pending page or login
+        setTimeout(() => {
+          router.push("/auth/login");
+        }, 2000);
+      }
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Registration failed";

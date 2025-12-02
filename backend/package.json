@@ -40,8 +40,11 @@
   "dependencies": {
     "@prisma/client": "^6.16.2",
     "@prisma/extension-accelerate": "^2.0.2",
+    "@types/nodemailer": "^7.0.2",
     "@types/qrcode": "^1.5.5",
     "@types/redis": "^4.0.10",
+    "@types/speakeasy": "^2.0.10",
+    "@types/uuid": "^10.0.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
@@ -53,8 +56,11 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "nanoid": "^5.0.7",
+    "nodemailer": "^7.0.9",
     "qrcode": "^1.5.4",
     "redis": "^5.8.2",
+    "speakeasy": "^2.0.0",
+    "uuid": "^13.0.0",
     "valid-url": "^1.0.9",
     "winston": "^3.14.2",
     "zod": "^3.23.8"

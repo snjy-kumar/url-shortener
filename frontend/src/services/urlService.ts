@@ -1,6 +1,5 @@
 import api from "../lib/api";
 import {
-  Url,
   CreateUrlRequest,
   UpdateUrlRequest,
   UrlResponse,
@@ -13,7 +12,6 @@ import {
   BulkUrlResponse,
   PaginationParams,
   UrlFilters,
-  DashboardStats,
 } from "../types";
 
 // ==================== URL MANAGEMENT SERVICE ====================
@@ -137,6 +135,50 @@ export class UrlService {
     );
     return response.data;
   }
+
+  // Get AI optimization suggestions for a URL
+  static async getAIOptimization(url: string): Promise<{
+    success: boolean;
+    data?: import("../types").AIOptimization;
+  }> {
+    // Mock AI optimization for now - replace with actual API call when backend is ready
+    return {
+      success: true,
+      data: {
+        suggestedSlugs: [
+          url
+            .split("/")
+            .pop()
+            ?.toLowerCase()
+            .replace(/[^a-z0-9]/g, "-")
+            .substring(0, 10) || "link",
+          "short-" + Math.random().toString(36).substring(2, 8),
+          "go-" + Math.random().toString(36).substring(2, 8),
+        ],
+        bestSharingTimes: [
+          { platform: "Twitter", time: "9:00 AM - 11:00 AM", score: 95 },
+          { platform: "LinkedIn", time: "7:00 AM - 9:00 AM", score: 90 },
+          { platform: "Facebook", time: "1:00 PM - 3:00 PM", score: 85 },
+        ],
+        targetPlatforms: [
+          {
+            platform: "Twitter",
+            score: 90,
+            reason: "High engagement for tech content",
+          },
+          {
+            platform: "LinkedIn",
+            score: 85,
+            reason: "Professional audience match",
+          },
+        ],
+        performanceInsights: [
+          "Short, memorable slugs perform 40% better",
+          "Morning shares get 2x more engagement",
+        ],
+      },
+    };
+  }
 }
 
 // ==================== QR CODE SERVICE ====================
@@ -203,7 +245,11 @@ export class AuthService {
     name?: string;
   }): Promise<{
     success: boolean;
-    data: { user: any; token: string; refreshToken?: string };
+    data: {
+      user: Record<string, unknown>;
+      token: string;
+      refreshToken?: string;
+    };
     message: string;
   }> {
     const response = await api.post("/auth/register", data);
@@ -211,12 +257,13 @@ export class AuthService {
   }
 
   // User login
-  static async login(data: {
-    email: string;
-    password: string;
-  }): Promise<{
+  static async login(data: { email: string; password: string }): Promise<{
     success: boolean;
-    data: { user: any; token: string; refreshToken?: string };
+    data: {
+      user: Record<string, unknown>;
+      token: string;
+      refreshToken?: string;
+    };
     message: string;
   }> {
     const response = await api.post("/auth/login", data);
@@ -224,9 +271,7 @@ export class AuthService {
   }
 
   // Refresh token
-  static async refreshToken(
-    refreshToken: string
-  ): Promise<{
+  static async refreshToken(refreshToken: string): Promise<{
     success: boolean;
     data: { token: string; refreshToken?: string };
   }> {
@@ -305,8 +350,42 @@ export class UrlUtils {
   }
 }
 
-// Export all services as default object
+// Export all services as default object with direct method access
 const urlService = {
+  // URL Service methods
+  createUrl: UrlService.createUrl.bind(UrlService),
+  getUrls: UrlService.getUrls.bind(UrlService),
+  getUrl: UrlService.getUrl.bind(UrlService),
+  updateUrl: UrlService.updateUrl.bind(UrlService),
+  deleteUrl: UrlService.deleteUrl.bind(UrlService),
+  verifyPassword: UrlService.verifyPassword.bind(UrlService),
+  getAnalytics: UrlService.getAnalytics.bind(UrlService),
+  toggleUrlStatus: UrlService.toggleUrlStatus.bind(UrlService),
+  createBulkUrls: UrlService.createBulkUrls.bind(UrlService),
+  exportUrls: UrlService.exportUrls.bind(UrlService),
+  getAIOptimization: UrlService.getAIOptimization.bind(UrlService),
+
+  // QR Code Service methods
+  generateQRCode: QRCodeService.generateQRCode.bind(QRCodeService),
+  downloadQRCode: QRCodeService.downloadQRCode.bind(QRCodeService),
+  getQRStats: QRCodeService.getQRStats.bind(QRCodeService),
+  generateBulkQRCodes: QRCodeService.generateBulkQRCodes.bind(QRCodeService),
+
+  // Auth Service methods
+  register: AuthService.register.bind(AuthService),
+  login: AuthService.login.bind(AuthService),
+  logout: AuthService.logout.bind(AuthService),
+  refreshToken: AuthService.refreshToken.bind(AuthService),
+
+  // URL Utils methods
+  generateShortCode: UrlUtils.generateShortCode.bind(UrlUtils),
+  formatClickCount: UrlUtils.formatClickCount.bind(UrlUtils),
+  getRelativeTime: UrlUtils.getRelativeTime.bind(UrlUtils),
+  truncateUrl: UrlUtils.truncateUrl.bind(UrlUtils),
+  isExpired: UrlUtils.isExpired.bind(UrlUtils),
+  isValidUrl: UrlUtils.isValidUrl.bind(UrlUtils),
+
+  // Also export the classes for direct access
   UrlService,
   QRCodeService,
   AuthService,

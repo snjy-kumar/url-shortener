@@ -8,6 +8,8 @@ interface Config {
   DATABASE_URL: string;
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
+  JWT_REFRESH_SECRET: string;
+  JWT_REFRESH_EXPIRES_IN: string;
   RATE_LIMIT_WINDOW_MS: number;
   RATE_LIMIT_MAX_REQUESTS: number;
   BASE_URL: string;
@@ -17,6 +19,10 @@ interface Config {
   LOG_FILE_PATH: string;
   REDIS_URL?: string;
   BCRYPT_SALT_ROUNDS: number;
+  MAX_LOGIN_ATTEMPTS: number;
+  LOCK_TIME: number;
+  EMAIL_VERIFICATION_EXPIRES: number;
+  PASSWORD_RESET_EXPIRES: number;
 }
 
 const getEnvVar = (key: string, defaultValue?: string): string => {
@@ -37,7 +43,12 @@ export const config: Config = {
   PORT: getEnvNumber('PORT', 3000),
   DATABASE_URL: getEnvVar('DATABASE_URL'),
   JWT_SECRET: getEnvVar('JWT_SECRET'),
-  JWT_EXPIRES_IN: getEnvVar('JWT_EXPIRES_IN', '24h'),
+  JWT_EXPIRES_IN: getEnvVar('JWT_EXPIRES_IN', '15m'),
+  JWT_REFRESH_SECRET: getEnvVar(
+    'JWT_REFRESH_SECRET',
+    getEnvVar('JWT_SECRET') + '_refresh'
+  ),
+  JWT_REFRESH_EXPIRES_IN: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
   RATE_LIMIT_WINDOW_MS: getEnvNumber('RATE_LIMIT_WINDOW_MS', 900000),
   RATE_LIMIT_MAX_REQUESTS: getEnvNumber('RATE_LIMIT_MAX_REQUESTS', 100),
   BASE_URL: getEnvVar('BASE_URL', 'http://localhost:3000'),
@@ -47,6 +58,16 @@ export const config: Config = {
   LOG_FILE_PATH: getEnvVar('LOG_FILE_PATH', 'logs/app.log'),
   REDIS_URL: process.env['REDIS_URL'] || undefined,
   BCRYPT_SALT_ROUNDS: getEnvNumber('BCRYPT_SALT_ROUNDS', 12),
+  MAX_LOGIN_ATTEMPTS: getEnvNumber('MAX_LOGIN_ATTEMPTS', 5),
+  LOCK_TIME: getEnvNumber('LOCK_TIME', 2 * 60 * 60 * 1000), // 2 hours
+  EMAIL_VERIFICATION_EXPIRES: getEnvNumber(
+    'EMAIL_VERIFICATION_EXPIRES',
+    24 * 60 * 60 * 1000
+  ), // 24 hours
+  PASSWORD_RESET_EXPIRES: getEnvNumber(
+    'PASSWORD_RESET_EXPIRES',
+    60 * 60 * 1000
+  ), // 1 hour
 };
 
 export const isDevelopment = config.NODE_ENV === 'development';

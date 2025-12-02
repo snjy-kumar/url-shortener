@@ -26,7 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { urlService } from "@/services/urlService";
+import urlService from "@/services/urlService";
 import { CreateUrlRequest, Url, AIOptimization } from "@/types";
 import { QRCodeGenerator } from "./QRCodeGenerator";
 
@@ -117,7 +117,7 @@ export function EnhancedUrlShortener({
           data.password && { password: data.password }),
       };
 
-      const response = await urlService.createShortUrl(payload);
+      const response = await urlService.createUrl(payload);
 
       if (response.success && response.data) {
         setCreatedUrl(response.data);

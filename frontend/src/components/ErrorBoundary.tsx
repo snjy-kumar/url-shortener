@@ -3,7 +3,13 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface Props {
   children: ReactNode;
@@ -77,10 +83,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <CardHeader>
               <div className="flex items-center gap-3 mb-2">
                 <AlertTriangle className="w-8 h-8 text-red-500" />
-                <CardTitle className="text-2xl">Oops! Something went wrong</CardTitle>
+                <CardTitle className="text-2xl">
+                  Oops! Something went wrong
+                </CardTitle>
               </div>
               <CardDescription>
-                We encountered an unexpected error. Don&apos;t worry, your data is safe.
+                We encountered an unexpected error. Don&apos;t worry, your data
+                is safe.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -108,7 +117,8 @@ export class ErrorBoundary extends Component<Props, State> {
               {process.env.NODE_ENV === "production" && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-900">
-                    If this problem persists, please contact support with the time of the error:{" "}
+                    If this problem persists, please contact support with the
+                    time of the error:{" "}
                     <strong>{new Date().toLocaleString()}</strong>
                   </p>
                 </div>
@@ -132,10 +142,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Reload Page
                 </Button>
-                <Button
-                  onClick={this.handleGoHome}
-                  className="w-full"
-                >
+                <Button onClick={this.handleGoHome} className="w-full">
                   <Home className="w-4 h-4 mr-2" />
                   Go Home
                 </Button>
@@ -144,8 +151,9 @@ export class ErrorBoundary extends Component<Props, State> {
               {/* Help Text */}
               <div className="text-center text-sm text-muted-foreground">
                 <p>
-                  The error has been logged and our team will investigate. In the
-                  meantime, try refreshing the page or returning to the home page.
+                  The error has been logged and our team will investigate. In
+                  the meantime, try refreshing the page or returning to the home
+                  page.
                 </p>
               </div>
             </CardContent>

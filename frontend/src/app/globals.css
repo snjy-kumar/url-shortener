@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+a[href],
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+label[for],
+.cursor-pointer {
+  cursor: pointer;
+}

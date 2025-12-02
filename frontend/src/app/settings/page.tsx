@@ -6,20 +6,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Key, 
-  Copy, 
-  Trash2, 
-  Plus, 
-  RefreshCw, 
-  Eye, 
-  EyeOff, 
+import {
+  Key,
+  Copy,
+  Trash2,
+  Plus,
+  RefreshCw,
+  Eye,
+  EyeOff,
   Calendar,
   Activity,
   Loader2,
-  AlertCircle
+  AlertCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "@/lib/api";
@@ -87,12 +93,12 @@ export default function SettingsPage() {
         toast.success("API key created successfully!");
         setNewKeyName("");
         await fetchApiKeys();
-        
+
         // Auto-show the new key
         const newKey = response.data.data;
         if (newKey) {
           setShowKeys({ ...showKeys, [newKey.id]: true });
-          
+
           // Show a dialog with the key
           alert(
             `Your new API key has been created!\n\nKey: ${newKey.key}\n\nMake sure to copy it now. You won't be able to see it again!`
@@ -138,10 +144,10 @@ export default function SettingsPage() {
       if (response.data.success) {
         toast.success("API key regenerated successfully!");
         await fetchApiKeys();
-        
+
         // Auto-show the regenerated key
         setShowKeys({ ...showKeys, [keyId]: true });
-        
+
         // Show a dialog with the new key
         const newKey = response.data.data;
         if (newKey) {
@@ -152,7 +158,9 @@ export default function SettingsPage() {
       }
     } catch (error) {
       const err = error as { response?: { data?: { message?: string } } };
-      toast.error(err.response?.data?.message || "Failed to regenerate API key");
+      toast.error(
+        err.response?.data?.message || "Failed to regenerate API key"
+      );
     }
   };
 

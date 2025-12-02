@@ -235,6 +235,196 @@ export class AuthController {
   }
 
   /**
+   * Update user profile
+   * PUT /api/v1/auth/profile
+   */
+  static async updateProfile(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+        });
+        return;
+      }
+
+      const { name, email } = req.body;
+
+      // Check if new email is already taken
+      if (email && email !== req.user.email) {
+        const existingUser = await prisma.user.findUnique({
+          where: { email },
+        });
+
+        if (existingUser) {
+          res.status(409).json({
+            success: false,
+            message: 'Email already in use',
+          });
+          return;
+        }
+      }
+
+      const updateData: any = {};
+      if (name) updateData.name = name;
+      if (email) updateData.email = email;
+
+      const updatedUser = await prisma.user.update({
+        where: { id: req.user.id },
+        data: updateData,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      logger.info('User profile updated', {
+        userId: req.user.id,
+        email: req.user.email,
+      });
+
+      res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        data: { user: updatedUser },
+      });
+    } catch (error) {
+      logger.error('Error updating user profile:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Change user password
+   * PUT /api/v1/auth/change-password
+   */
+  static async changePassword(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+        });
+        return;
+      }
+
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({
+          success: false,
+          message: 'Current and new passwords are required',
+        });
+        return;
+      }
+
+      // Get user with password
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+      });
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+        return;
+      }
+
+      // Verify current password
+      const isPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!isPasswordValid) {
+        res.status(401).json({
+          success: false,
+          message: 'Current password is incorrect',
+        });
+        return;
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(
+        newPassword,
+        config.BCRYPT_SALT_ROUNDS
+      );
+
+      // Update password
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { password: hashedPassword },
+      });
+
+      logger.info('User password changed', {
+        userId: req.user.id,
+        email: req.user.email,
+      });
+
+      res.json({
+        success: true,
+        message: 'Password changed successfully',
+      });
+    } catch (error) {
+      logger.error('Error changing password:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Delete user account
+   * DELETE /api/v1/auth/account
+   */
+  static async deleteAccount(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+        });
+        return;
+      }
+
+      // Soft delete: deactivate the account
+      // In a real app, you might want to permanently delete related data
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { isActive: false },
+      });
+
+      logger.info('User account deleted', {
+        userId: req.user.id,
+        email: req.user.email,
+      });
+
+      res.json({
+        success: true,
+        message: 'Account deleted successfully',
+      });
+    } catch (error) {
+      logger.error('Error deleting user account:', error);
+      next(error);
+    }
+  }
+
+  /**
    * Logout user
    * POST /api/v1/auth/logout
    */

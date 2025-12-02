@@ -61,9 +61,11 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      await login(formData.email, formData.password);
-      toast.success("Logged in successfully");
-      router.push("/dashboard");
+      const success = await login(formData.email, formData.password);
+      if (success) {
+        toast.success("Logged in successfully");
+        router.push("/dashboard");
+      }
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Login failed";
@@ -118,7 +120,15 @@ export default function LoginForm() {
             </div>
 
             <div>
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm text-blue-600 hover:text-blue-500"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 name="password"

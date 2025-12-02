@@ -4,12 +4,7 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Search,
-  Filter,
-  Download,
   Settings,
-  LogOut,
-  User,
-  BarChart3,
   Link,
   QrCode,
   Globe,
@@ -18,17 +13,12 @@ import {
   TrendingUp,
   Eye,
   MousePointer,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card";
+import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import {
   Dialog,
@@ -39,7 +29,7 @@ import {
   DialogTrigger,
 } from "../../components/ui/dialog";
 
-import { useAuth, ProtectedRoute } from "../../contexts/AuthContext";
+import { ProtectedRoute } from "../../contexts/AuthContext";
 import { EnhancedUrlShortener } from "../../components/enhanced/EnhancedUrlShortener";
 import { UrlService, QRCodeService, UrlUtils } from "../../services/urlService";
 import { Url, UrlFilters, PaginationParams } from "../../types";
@@ -226,6 +216,15 @@ const UrlList: React.FC<UrlListProps> = ({
                 <Button variant="outline" size="sm" onClick={() => onEdit(url)}>
                   <Settings className="w-4 h-4" />
                 </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onDelete(url)}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -245,8 +244,6 @@ export default function DashboardPage() {
   const [editingUrl, setEditingUrl] = useState<Url | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
-  const { user, logout } = useAuth();
 
   // Load URLs
   const loadUrls = async (page: number = 1, search?: string) => {
@@ -347,42 +344,9 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    window.location.href = "/";
-  };
-
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center">
-                <Link className="w-8 h-8 text-blue-600 mr-3" />
-                <h1 className="text-xl font-semibold text-gray-900">
-                  URL Shortener
-                </h1>
-              </div>
-
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600">
-                  Welcome, {user?.name || user?.email}
-                </span>
-                <Button
-                  variant="outline"
-                  onClick={handleLogout}
-                  className="flex items-center space-x-1"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
-
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-8">

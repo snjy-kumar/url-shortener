@@ -38,8 +38,21 @@ app.use(
   cors({
     origin: config.CORS_ORIGIN,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-request-id',
+      'X-Request-ID',
+      'x-request-time',
+      'X-Request-Time',
+    ],
+    exposedHeaders: [
+      'x-request-id',
+      'X-Request-ID',
+      'x-request-time',
+      'X-Request-Time',
+    ],
   })
 );
 

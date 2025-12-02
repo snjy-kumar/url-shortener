@@ -66,7 +66,7 @@ export function UrlShortener({ onUrlCreated }: UrlShortenerProps) {
         }),
       };
 
-      const response = await urlService.createShortUrl(payload);
+      const response = await urlService.createUrl(payload);
 
       if (response.success && response.data) {
         setCreatedUrl(response.data);
