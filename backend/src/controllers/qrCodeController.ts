@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { QRCodeService } from '../services/qrCodeService';
-import { logger } from '../utils/logger';
+import { QRCodeService } from '../services/qrCodeService.js';
+import { logger } from '../utils/logger.js';
 
 export class QRCodeController {
   /**

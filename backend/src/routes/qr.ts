@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { QRCodeController } from '../controllers/qrCodeController';
-import { validateQRCodeGeneration } from '../middleware/qrValidation';
+import { QRCodeController } from '../controllers/qrCodeController.js';
+import { validateQRCodeGeneration } from '../middleware/qrValidation.js';
 
 const router = Router();
 
@@ -30,7 +30,7 @@ router.get('/:shortCode/download', QRCodeController.downloadQRCode);
 router.get('/:shortCode/stats', async (req, res, next) => {
   try {
     const { shortCode } = req.params;
-    const { QRCodeService } = await import('../services/qrCodeService');
+    const { QRCodeService } = await import('../services/qrCodeService.js');
 
     const stats = await QRCodeService.getQRCodeStats(shortCode);
 

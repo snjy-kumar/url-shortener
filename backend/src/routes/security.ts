@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { SecurityController } from '../controllers/securityController';
-import { authenticateToken } from '../middleware/auth';
-import { adminSecurityStack } from '../middleware/advancedSecurity';
+import { SecurityController } from '../controllers/securityController.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { adminSecurityStack } from '../middleware/advancedSecurity.js';
 import { body, param, validationResult } from 'express-validator';
 
 const router = Router();

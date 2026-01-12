@@ -1,6 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer';
-import { config } from '../config/env';
-import { logger } from '../utils/logger';
+import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
 
 export interface EmailOptions {
   to: string;
@@ -15,8 +15,8 @@ class EmailService {
   private readonly fromName: string;
 
   constructor() {
-    this.fromEmail = process.env.EMAIL_FROM || 'noreply@urlshortener.com';
-    this.fromName = process.env.EMAIL_FROM_NAME || 'URL Shortener';
+    this.fromEmail = process.env['EMAIL_FROM'] || 'noreply@urlshortener.com';
+    this.fromName = process.env['EMAIL_FROM_NAME'] || 'URL Shortener';
     this.initializeTransporter();
   }
 
@@ -28,12 +28,12 @@ class EmailService {
       // For production, use real SMTP
       if (config.NODE_ENV === 'production') {
         this.transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: Number(process.env.SMTP_PORT) || 587,
-          secure: process.env.SMTP_SECURE === 'true',
+          host: process.env['SMTP_HOST'],
+          port: Number(process.env['SMTP_PORT']) || 587,
+          secure: process.env['SMTP_SECURE'] === 'true',
           auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user: process.env['SMTP_USER'],
+            pass: process.env['SMTP_PASS'],
           },
         });
       } else {
@@ -43,8 +43,8 @@ class EmailService {
           host: 'smtp.ethereal.email',
           port: 587,
           auth: {
-            user: process.env.SMTP_USER || 'ethereal.user@ethereal.email',
-            pass: process.env.SMTP_PASS || 'ethereal.password',
+            user: process.env['SMTP_USER'] || 'ethereal.user@ethereal.email',
+            pass: process.env['SMTP_PASS'] || 'ethereal.password',
           },
         });
       }
@@ -107,7 +107,6 @@ class EmailService {
     token: string
   ): Promise<boolean> {
     const verificationUrl = `${config.BASE_URL}/api/v1/auth/verify-email?token=${token}`;
-    const frontendUrl = config.CORS_ORIGIN || 'http://localhost:3001';
 
     const html = `
       <!DOCTYPE html>

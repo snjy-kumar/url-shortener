@@ -1,4 +1,4 @@
-import { config } from '../config/env';
+import { config } from '../config/env.js';
 import { randomBytes } from 'crypto';
 
 // Cryptographically secure short code generator
@@ -8,7 +8,7 @@ export const generateShortCode = (): string => {
   const bytes = randomBytes(config.SHORT_CODE_LENGTH);
   let result = '';
   for (let i = 0; i < config.SHORT_CODE_LENGTH; i++) {
-    result += chars.charAt(bytes[i] % chars.length);
+    result += chars.charAt(bytes[i] ?? 0 % chars.length);
   }
   return result;
 };
@@ -77,7 +77,43 @@ const BLACKLISTED_DOMAINS = [
 
 /**
  * Check if URL is potentially malicious
- */\nexport const isSafeUrl = (url: string): boolean => {\n  try {\n    const urlObj = new URL(url);\n    const hostname = urlObj.hostname.toLowerCase();\n    \n    // Check blacklisted domains\n    for (const blocked of BLACKLISTED_DOMAINS) {\n      if (hostname === blocked || hostname.startsWith(blocked)) {\n        return false;\n      }\n    }\n    \n    // Prevent SSRF - block private IPs\n    if (/^(10|172\\.(1[6-9]|2[0-9]|3[0-1])|192\\.168)\\./.test(hostname)) {\n      return false;\n    }\n    \n    return true;\n  } catch {\n    return false;\n  }\n};\n\n/**\n * Validate if a string is a valid URL\n */\nexport const isValidUrl = (url: string): boolean => {\n  try {\n    const urlObj = new URL(url);\n    const isHttps = urlObj.protocol === 'http:' || urlObj.protocol === 'https:';\n    const isSafe = isSafeUrl(url);\n    return isHttps && isSafe;\n  } catch {\n    return false;\n  }\n};
+ */
+export const isSafeUrl = (url: string): boolean => {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    
+    // Check blacklisted domains
+    for (const blocked of BLACKLISTED_DOMAINS) {
+      if (hostname === blocked || hostname.startsWith(blocked)) {
+        return false;
+      }
+    }
+    
+    // Prevent SSRF - block private IPs
+    if (/^(10|172\.(1[6-9]|2[0-9]|3[0-1])|192\.168)\./.test(hostname)) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Validate if a string is a valid URL
+ */
+export const isValidUrl = (url: string): boolean => {
+  try {
+    const urlObj = new URL(url);
+    const isHttps = urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    const isSafe = isSafeUrl(url);
+    return isHttps && isSafe;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Normalize URL by adding protocol if missing

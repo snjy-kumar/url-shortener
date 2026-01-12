@@ -1,6 +1,6 @@
-import { prisma } from '../config/database';
-import { logger } from '../utils/logger';
-import { CacheService } from './cacheService';
+import { prisma } from '../config/database.js';
+import { logger } from '../utils/logger.js';
+import { CacheService } from './cacheService.js';
 
 export class ExpirationService {
   private static readonly CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds

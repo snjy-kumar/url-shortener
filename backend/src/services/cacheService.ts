@@ -1,5 +1,5 @@
-import { redisConfig } from '../config/redis';
-import { logger } from '../utils/logger';
+import { redisConfig } from '../config/redis.js';
+import { logger } from '../utils/logger.js';
 
 export interface CacheOptions {
   ttl?: number; // Time to live in seconds

@@ -1,0 +1,2 @@
+# .tsbuildinfo should not be committed
+.tsbuildinfo

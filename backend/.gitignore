@@ -144,3 +144,14 @@ testem.log
 # System Files
 .DS_Store
 Thumbs.db
+
+# Prisma 7 generated client
+generated/
+
+# Prisma 7 generated client
+generated/
+
+
+# markdown files
+*.md
+!README.md

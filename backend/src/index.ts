@@ -6,35 +6,63 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 
-import { config } from './config/env';
-import { prisma } from './config/database';
-import { redisConfig } from './config/redis';
-import { logger } from './utils/logger';
+import { config } from './config/env.js';
+import { prisma } from './config/database.js';
+import { redisConfig } from './config/redis.js';
+import { logger } from './utils/logger.js';
+import { validateStartup } from './utils/startupValidation.js';
+import { DatabaseMonitor } from './utils/dbMonitoring.js';
+import { asyncHandler } from './utils/asyncHandler.js';
+
+// Initialize Sentry FIRST (before any other imports that might throw)
+import { sentryService } from './services/sentryService.js';
+import { sentryRequestHandler, sentryTracingHandler, sentryErrorHandler, sentryUserContext } from './middleware/sentry.js';
+sentryService.initialize();
+
+// Initialize APM
+import { apmService, apmMiddleware } from './services/apmService.js';
+
+// CRITICAL: Validate environment and configuration before ANYTHING else
+// This prevents the app from starting with invalid/dangerous config
+validateStartup();
+
+const app = express();
+
+// Setup global error handlers EARLY to catch startup errors
 import {
   errorHandler,
   setupGlobalErrorHandlers,
   notFoundHandler,
-} from './middleware/errorHandler';
-import { requestLogger } from './middleware/requestLogger';
+} from './middleware/errorHandler.js';
+setupGlobalErrorHandlers();
+
+import { requestLogger } from './middleware/requestLogger.js';
 
 // Import routes
-import urlRoutes from './routes/url';
-import authRoutes from './routes/auth';
-import qrRoutes from './routes/qr';
-import apiKeyRoutes from './routes/apiKeys';
-import expirationRoutes from './routes/expiration';
-import analyticsRoutes from './routes/analytics';
-import securityRoutes from './routes/security';
-import monitoringRoutes from './routes/monitoring';
+import urlRoutes from './routes/url.js';
+import authRoutes from './routes/auth.js';
+import qrRoutes from './routes/qr.js';
+import apiKeyRoutes from './routes/apiKeys.js';
+import expirationRoutes from './routes/expiration.js';
+import analyticsRoutes from './routes/analytics.js';
+import securityRoutes from './routes/security.js';
+import monitoringRoutes from './routes/monitoring.js';
 // Import security middleware
-import { securityStack } from './middleware/advancedSecurity';
-
-const app = express();
+import { securityStack } from './middleware/advancedSecurity.js';
 
 // Trust proxy - CRITICAL for production behind load balancer
 if (config.TRUST_PROXY) {
   app.set('trust proxy', 1);
 }
+
+// Sentry request handler - MUST be first middleware
+app.use(sentryRequestHandler());
+
+// Sentry tracing for APM
+app.use(sentryTracingHandler());
+
+// APM middleware for performance monitoring
+app.use(apmMiddleware);
 
 // Request ID middleware
 app.use((req, res, next) => {
@@ -92,6 +120,20 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// CRITICAL: Rate limiter for public redirect endpoint
+// Prevents DDoS attacks via short code enumeration
+const redirectLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute per IP
+  message: {
+    error: 'Too many redirect requests, please slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip health check and API routes
+  skip: (req) => req.path === '/health' || req.path.startsWith('/api/'),
+});
+
 // Advanced security middleware (applied globally)
 app.use(securityStack);
 
@@ -106,35 +148,65 @@ app.use(compression());
 // Request logging
 app.use(requestLogger);
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
+// Sentry user context (after auth middleware would extract user)
+app.use(sentryUserContext);
+
+// Health check endpoint - CRITICAL for load balancers and monitoring
+app.get('/health', asyncHandler(async (req, res) => {
+  const checks = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: config.NODE_ENV,
+    services: {
+      database: { status: 'unknown', latency: 0 },
+      cache: { status: 'unknown', latency: 0 },
+      pool: { active: 0, idle: 0, total: 0, utilizationPercent: 0 },
+    },
+  };
+
+  let isHealthy = true;
+
+  // Check database connection
   try {
-    // Check database connection
+    const dbStart = Date.now();
     await prisma.$queryRaw`SELECT 1`;
+    const dbLatency = Date.now() - dbStart;
+    checks.services.database = { status: 'healthy', latency: dbLatency };
 
-    // Check Redis connection
-    const { CacheService } = await import('./services/cacheService');
-    const cacheHealth = await CacheService.healthCheck();
+    // Get pool statistics
+    const poolStats = await DatabaseMonitor.getPoolStats();
+    checks.services.pool = poolStats;
 
-    res.status(200).json({
-      status: 'OK',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: config.NODE_ENV,
-      services: {
-        database: 'healthy',
-        cache: cacheHealth.status,
-        cacheLatency: cacheHealth.latency,
-      },
-    });
+    // Alert if pool utilization is high
+    if (poolStats.utilizationPercent > 90) {
+      logger.warn('⚠️ Database pool utilization high during health check', poolStats);
+    }
   } catch (error) {
-    logger.error('Health check failed:', error);
-    res.status(503).json({
-      status: 'Service Unavailable',
-      timestamp: new Date().toISOString(),
-    });
+    logger.error('Database health check failed:', error);
+    checks.services.database = { status: 'unhealthy', latency: 0 };
+    isHealthy = false;
   }
-});
+
+  // Check Redis connection (optional - don't fail health check if Redis is down)
+  try {
+    const { CacheService } = await import('./services/cacheService.js');
+    const cacheHealth = await CacheService.healthCheck();
+    checks.services.cache = {
+      status: cacheHealth.status,
+      latency: cacheHealth.latency || 0,
+    };
+  } catch (error) {
+    logger.warn('Redis health check failed (non-critical):', error);
+    checks.services.cache = { status: 'degraded', latency: 0 };
+    // Don't mark overall health as failed - app works without Redis
+  }
+
+  // Update status
+  checks.status = isHealthy ? 'OK' : 'Service Unavailable';
+
+  res.status(isHealthy ? 200 : 503).json(checks);
+}));
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
@@ -147,19 +219,20 @@ app.use('/api/v1/security', securityRoutes);
 app.use('/api/v1/monitoring', monitoringRoutes);
 
 // Import URL controller for redirection
-import { UrlController } from './controllers/urlController';
+import { UrlController } from './controllers/urlController.js';
 
+// CRITICAL: Apply rate limiting BEFORE redirect handler to prevent DDoS
 // URL redirection route (this should be last to catch short codes)
-app.get('/:shortCode', UrlController.redirectToOriginal);
+app.get('/:shortCode', redirectLimiter, UrlController.redirectToOriginal);
 
 // 404 handler for unmatched routes
 app.use('*', notFoundHandler);
 
+// Sentry error handler - MUST be before other error handlers
+app.use(sentryErrorHandler());
+
 // Error handling middleware (should be last)
 app.use(errorHandler);
-
-// Setup global error handlers
-setupGlobalErrorHandlers();
 
 // Start server
 const startServer = async () => {
@@ -180,9 +253,17 @@ const startServer = async () => {
     }
 
     // Start expiration cleanup service
-    const { ExpirationService } = await import('./services/expirationService');
+    const { ExpirationService } = await import('./services/expirationService.js');
     ExpirationService.startCleanupProcess();
     logger.info('✅ URL expiration cleanup service started');
+
+    // Start database connection pool monitoring
+    DatabaseMonitor.startMonitoring(60000); // Check every minute
+    logger.info('✅ Database connection pool monitoring started');
+
+    // Start APM monitoring
+    apmService.start(60000); // Log metrics every minute
+    logger.info('✅ APM (Application Performance Monitoring) started');
 
     server = app.listen(config.PORT, () => {
       logger.info(`🚀 Server running on port ${config.PORT}`);
@@ -234,11 +315,26 @@ const gracefulShutdown = async (signal: string) => {
 
     // Stop expiration service
     try {
-      const { ExpirationService } = await import('./services/expirationService');
+      const { ExpirationService } = await import('./services/expirationService.js');
       ExpirationService.stopCleanupProcess();
       logger.info('Expiration service stopped');
     } catch (error) {
       logger.error('Error stopping expiration service:', error);
+    }
+
+    // Stop database monitoring
+    DatabaseMonitor.stopMonitoring();
+    logger.info('Database monitoring stopped');
+
+    // Stop APM monitoring
+    apmService.stop();
+    logger.info('APM monitoring stopped');
+
+    // Flush Sentry events
+    if (sentryService.isInitialized()) {
+      await sentryService.flush(5000);
+      await sentryService.close(2000);
+      logger.info('Sentry flushed and closed');
     }
 
     // Close database connection

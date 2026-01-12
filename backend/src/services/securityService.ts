@@ -1,6 +1,6 @@
 import { Request } from 'express';
-import { CacheService } from './cacheService';
-import { logger } from '../utils/logger';
+import { CacheService } from './cacheService.js';
+import { logger } from '../utils/logger.js';
 
 export interface SecurityConfig {
   maxRequestsPerMinute: number;
@@ -112,7 +112,7 @@ export class SecurityService {
    */
   static async checkRateLimit(
     ip: string,
-    endpoint?: string
+    _endpoint?: string
   ): Promise<RateLimitInfo> {
     if (this.isWhitelisted(ip)) {
       return {
@@ -205,7 +205,6 @@ export class SecurityService {
       return;
     }
 
-    const now = Date.now();
     const minuteKey = `rate:${ip}:minute`;
     const hourKey = `rate:${ip}:hour`;
     const dayKey = `rate:${ip}:day`;
@@ -314,11 +313,11 @@ export class SecurityService {
   /**
    * Record analytics data
    */
-  static async recordAnalytics(ip: string, endpoint?: string): Promise<void> {
+  static async recordAnalytics(ip: string, _endpoint?: string): Promise<void> {
     const analyticsKey = 'security:analytics';
     const analytics = await CacheService.get<string>(analyticsKey);
 
-    let data: SecurityAnalytics = analytics
+    const data: SecurityAnalytics = analytics
       ? JSON.parse(analytics)
       : {
           totalRequests: 0,

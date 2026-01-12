@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
-import { ExpirationService } from '../services/expirationService';
-import { AuthenticatedRequest } from '../types';
-import { logger } from '../utils/logger';
+import { Response } from 'express';
+import { ExpirationService } from '../services/expirationService.js';
+import { AuthenticatedRequest } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 export class ExpirationController {
   /**

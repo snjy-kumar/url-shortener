@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { UrlService } from '../services/urlService';
-import { CreateUrlRequest, AuthenticatedRequest } from '../types';
-import { logger } from '../utils/logger';
-import { prisma } from '../config/database';
-import { EnhancedPasswordService } from '../services/enhancedPasswordService';
+import { UrlService } from '../services/urlService.js';
+import { CreateUrlRequest, AuthenticatedRequest } from '../types/index.js';
+import { logger } from '../utils/logger.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { prisma } from '../config/database.js';
+import { EnhancedPasswordService } from '../services/enhancedPasswordService.js';
 
 export class UrlController {
   /**
@@ -489,87 +490,91 @@ export class UrlController {
   /**
    * Redirect to original URL
    * GET /:shortCode
+   * 
+   * WRAPPED with asyncHandler for automatic error handling
    */
-  static async redirectToOriginal(
+  static redirectToOriginal = asyncHandler(async (
     req: Request,
     res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const { shortCode } = req.params;
+    _next: NextFunction
+  ) => {
+    const { shortCode } = req.params;
 
-      if (!shortCode) {
-        res.status(404).json({
-          success: false,
-          message: 'Short code not provided',
+    if (!shortCode) {
+      res.status(404).json({
+        success: false,
+        message: 'Short code not provided',
+      });
+      return;
+    }
+
+    // Get URL details to check for password protection
+    const urlDetails = await UrlService.getUrlByShortCode(shortCode);
+    if (!urlDetails) {
+      res.status(404).json({
+        success: false,
+        message: 'URL not found or expired',
+      });
+      return;
+    }
+
+    // Check if URL is password protected
+    const url = await prisma.url.findFirst({
+      where: {
+        OR: [{ shortCode }, { customAlias: shortCode }],
+        isActive: true,
+      },
+      select: { password: true, originalUrl: true, id: true },
+    });
+
+    if (url?.password) {
+      // URL is password protected, return special response
+      res.status(423).json({
+        success: false,
+        message: 'This URL is password protected',
+        requiresPassword: true,
+        shortCode: shortCode,
+      });
+      return;
+    }
+
+    const originalUrl = await UrlService.getOriginalUrl(shortCode);
+
+    if (!originalUrl) {
+      res.status(404).json({
+        success: false,
+        message: 'URL not found or expired',
+      });
+      return;
+    }
+
+    // Record the click/visit (fire-and-forget to not slow down redirect)
+    if (url) {
+      UrlService.recordClick(
+        url.id,
+        req.ip,
+        req.get('User-Agent'),
+        req.get('Referer')
+      ).catch((error) => {
+        // Log but don't fail the redirect
+        logger.error('Failed to record click (non-critical):', {
+          error: error.message,
+          shortCode,
+          ip: req.ip,
         });
-        return;
-      }
-
-      // Get URL details to check for password protection
-      const urlDetails = await UrlService.getUrlByShortCode(shortCode);
-      if (!urlDetails) {
-        res.status(404).json({
-          success: false,
-          message: 'URL not found or expired',
-        });
-        return;
-      }
-
-      // Check if URL is password protected
-      const url = await prisma.url.findFirst({
-        where: {
-          OR: [{ shortCode }, { customAlias: shortCode }],
-          isActive: true,
-        },
-        select: { password: true, originalUrl: true, id: true },
       });
 
-      if (url?.password) {
-        // URL is password protected, return special response
-        res.status(423).json({
-          success: false,
-          message: 'This URL is password protected',
-          requiresPassword: true,
-          shortCode: shortCode,
-        });
-        return;
-      }
-
-      const originalUrl = await UrlService.getOriginalUrl(shortCode);
-
-      if (!originalUrl) {
-        res.status(404).json({
-          success: false,
-          message: 'URL not found or expired',
-        });
-        return;
-      }
-
-      // Record the click/visit
-      if (url) {
-        await UrlService.recordClick(
-          url.id,
-          req.ip,
-          req.get('User-Agent'),
-          req.get('Referer')
-        );
-
-        logger.info('URL accessed', {
-          shortCode,
-          originalUrl,
-          ip: req.ip,
-          userAgent: req.get('User-Agent'),
-        });
-      }
-
-      // Redirect to the original URL
-      res.redirect(301, originalUrl);
-    } catch (error) {
-      logger.error('Error redirecting URL:', error);
-      next(error);
+      logger.info('URL accessed', {
+        shortCode,
+        originalUrl,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+      });
     }
-  }
+
+    // Redirect to the original URL
+    res.redirect(301, originalUrl);
+  });
 
   /**
    * Verify password for password-protected URL

@@ -1,15 +1,14 @@
-import { prisma } from '../config/database';
+import { prisma } from '../config/database.js';
 import {
   generateShortCode,
   isValidUrl,
   normalizeUrl,
   generateShortUrl,
-} from '../utils/url';
-import { CreateUrlRequest, UrlResponse, AuthenticatedRequest } from '../types';
+} from '../utils/url.js';
+import { CreateUrlRequest, UrlResponse } from '../types/index.js';
 import bcrypt from 'bcryptjs';
-import { config } from '../config/env';
-import { CacheService } from './cacheService';
-import { EnhancedPasswordService } from './enhancedPasswordService';
+import { CacheService } from './cacheService.js';
+import { EnhancedPasswordService } from './enhancedPasswordService.js';
 
 export class UrlService {
   /**
@@ -120,12 +119,12 @@ export class UrlService {
       where: { OR: [{ shortCode }, { customAlias: shortCode }] },
       select: { id: true },
     });
-    if (!url) return null;
+    if (!url) {return null;}
 
     const where: any = { urlId: url.id };
-    if (start) where.clickedAt = { gte: new Date(start) };
+    if (start) {where.clickedAt = { gte: new Date(start) };}
     if (end)
-      where.clickedAt = { ...(where.clickedAt || {}), lte: new Date(end) };
+      {where.clickedAt = { ...(where.clickedAt || {}), lte: new Date(end) };}
 
     const [totalClicks, uniqueClicks, byDate, byReferrer, byCountry, byHour] =
       await Promise.all([
@@ -400,7 +399,7 @@ export class UrlService {
     const url = await prisma.url.findFirst({
       where: { OR: [{ shortCode }, { customAlias: shortCode }] },
     });
-    if (!url) return null;
+    if (!url) {return null;}
 
     const data: any = {};
 

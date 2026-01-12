@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { validationResult } from 'express-validator';
-import { ApiKeyService } from '../services/apiKeyService';
-import { logger } from '../utils/logger';
-import { AuthenticatedRequest } from '../types';
+import { ApiKeyService } from '../services/apiKeyService.js';
+import { logger } from '../utils/logger.js';
+import { AuthenticatedRequest } from '../types/index.js';
 
 export class ApiKeyController {
   /**

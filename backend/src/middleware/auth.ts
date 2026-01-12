@@ -1,9 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../config/database';
-import { config } from '../config/env';
-import { logger } from '../utils/logger';
-import { AuthenticatedRequest, JWTPayload } from '../types';
+import { prisma } from '../config/database.js';
+import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { AuthenticatedRequest, JWTPayload } from '../types/index.js';
 
 /**
  * Authentication middleware to verify JWT tokens

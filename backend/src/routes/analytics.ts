@@ -1,6 +1,6 @@
 import express from 'express';
-import { EnhancedAnalyticsController } from '../controllers/enhancedAnalyticsController';
-import { authenticateToken } from '../middleware/auth';
+import { EnhancedAnalyticsController } from '../controllers/enhancedAnalyticsController.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { body, validationResult } from 'express-validator';
 
 const router = express.Router();

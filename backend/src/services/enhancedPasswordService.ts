@@ -1,9 +1,8 @@
 import bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
-import { prisma } from '../config/database';
-import { config } from '../config/env';
-import { logger } from '../utils/logger';
-import { CacheService } from './cacheService';
+import { prisma } from '../config/database.js';
+import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { CacheService } from './cacheService.js';
 
 export interface PasswordAttempt {
   ipAddress: string;
@@ -123,26 +122,26 @@ export class EnhancedPasswordService {
     };
 
     // Length scoring
-    if (password.length >= 12) score += 2;
-    else if (password.length >= 8) score += 1;
-    else feedback.push('Use at least 8 characters');
+    if (password.length >= 12) {score += 2;}
+    else if (password.length >= 8) {score += 1;}
+    else {feedback.push('Use at least 8 characters');}
 
     // Character variety scoring
-    if (meets.hasUppercase) score += 1;
-    else feedback.push('Add uppercase letters');
+    if (meets.hasUppercase) {score += 1;}
+    else {feedback.push('Add uppercase letters');}
 
-    if (meets.hasLowercase) score += 1;
-    else feedback.push('Add lowercase letters');
+    if (meets.hasLowercase) {score += 1;}
+    else {feedback.push('Add lowercase letters');}
 
-    if (meets.hasNumbers) score += 1;
-    else feedback.push('Add numbers');
+    if (meets.hasNumbers) {score += 1;}
+    else {feedback.push('Add numbers');}
 
-    if (meets.hasSpecialChars) score += 1;
-    else feedback.push('Add special characters');
+    if (meets.hasSpecialChars) {score += 1;}
+    else {feedback.push('Add special characters');}
 
     // Bonus for mixed character types
     const charTypes = Object.values(meets).filter(Boolean).length;
-    if (charTypes >= 3) score += 1;
+    if (charTypes >= 3) {score += 1;}
 
     // Common password patterns penalty
     if (/^(password|123456|qwerty|abc123|admin|test)/i.test(password)) {
@@ -427,7 +426,7 @@ export class EnhancedPasswordService {
   /**
    * Get password attempt statistics
    */
-  static async getPasswordStats(shortCode: string): Promise<{
+  static async getPasswordStats(_shortCode: string): Promise<{
     totalAttempts: number;
     successfulAttempts: number;
     failedAttempts: number;

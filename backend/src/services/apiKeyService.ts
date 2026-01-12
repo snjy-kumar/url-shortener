@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
-import { prisma } from '../config/database';
-import { logger } from '../utils/logger';
-import { CacheService } from './cacheService';
+import { prisma } from '../config/database.js';
+import { logger } from '../utils/logger.js';
+import { CacheService } from './cacheService.js';
 
 export interface ApiKeyData {
   id: number;

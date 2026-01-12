@@ -1,5 +1,15 @@
 import { Request } from 'express';
 
+// Extend Express Request to include id property
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      id?: string;
+    }
+  }
+}
+
 export interface User {
   id: number;
   email: string;

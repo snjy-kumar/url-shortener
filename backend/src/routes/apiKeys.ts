@@ -1,6 +1,6 @@
 import express from 'express';
-import { ApiKeyController } from '../controllers/apiKeyController';
-import { authenticateToken } from '../middleware/auth';
+import { ApiKeyController } from '../controllers/apiKeyController.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { body, validationResult } from 'express-validator';
 
 const router = express.Router();

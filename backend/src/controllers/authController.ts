@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt, { SignOptions } from 'jsonwebtoken';
-import { prisma } from '../config/database';
-import { config } from '../config/env';
-import { logger } from '../utils/logger';
-import { UserRegistration, UserLogin, AuthenticatedRequest } from '../types';
+import jwt from 'jsonwebtoken';
+import { prisma } from '../config/database.js';
+import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { UserRegistration, UserLogin, AuthenticatedRequest } from '../types/index.js';
 
 export class AuthController {
   /**
@@ -187,13 +187,13 @@ export class AuthController {
       const accessToken = jwt.sign(
         { userId: user.id, email: user.email },
         config.JWT_SECRET,
-        { expiresIn: config.JWT_EXPIRES_IN, issuer: 'url-shortener' }
+        { expiresIn: config.JWT_EXPIRES_IN, issuer: 'url-shortener' } as jwt.SignOptions
       );
       
       const refreshToken = jwt.sign(
         { userId: user.id, email: user.email, type: 'refresh' },
         config.JWT_REFRESH_SECRET,
-        { expiresIn: config.JWT_REFRESH_EXPIRES_IN, issuer: 'url-shortener' }
+        { expiresIn: config.JWT_REFRESH_EXPIRES_IN, issuer: 'url-shortener' } as jwt.SignOptions
       );
 
       // Store refresh token in database
@@ -364,8 +364,8 @@ export class AuthController {
       }
 
       const updateData: any = {};
-      if (name) updateData.name = name;
-      if (email) updateData.email = email;
+      if (name) {updateData.name = name;}
+      if (email) {updateData.email = email;}
 
       const updatedUser = await prisma.user.update({
         where: { id: req.user.id },

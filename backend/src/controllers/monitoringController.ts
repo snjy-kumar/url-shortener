@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { ErrorHandlingService } from '../services/errorHandlingService';
-import { logger } from '../utils/logger';
+import { ErrorHandlingService } from '../services/errorHandlingService.js';
+import { logger } from '../utils/logger.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: number; email: string; role: string };
@@ -269,7 +269,7 @@ export class MonitoringController {
   static async getSystemHealth(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    _next: NextFunction
   ) {
     try {
       const errorHealthCheck = await ErrorHandlingService.healthCheck();
@@ -408,7 +408,7 @@ export class MonitoringController {
    * Calculate trend for time-series data
    */
   private static calculateTrend(entries: Array<{ timestamp: number }>): string {
-    if (entries.length < 2) return 'stable';
+    if (entries.length < 2) {return 'stable';}
 
     const now = Date.now();
     const oneHourAgo = now - 3600000;
@@ -421,8 +421,8 @@ export class MonitoringController {
       (entry) => entry.timestamp > twoHoursAgo && entry.timestamp <= oneHourAgo
     ).length;
 
-    if (recentCount > previousCount * 1.2) return 'increasing';
-    if (recentCount < previousCount * 0.8) return 'decreasing';
+    if (recentCount > previousCount * 1.2) {return 'increasing';}
+    if (recentCount < previousCount * 0.8) {return 'decreasing';}
     return 'stable';
   }
 }

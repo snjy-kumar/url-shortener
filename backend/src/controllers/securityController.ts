@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { SecurityService, SecurityConfig } from '../services/securityService';
-import { logger } from '../utils/logger';
+import { SecurityService, SecurityConfig } from '../services/securityService.js';
+import { logger } from '../utils/logger.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: number; email: string; role: string };

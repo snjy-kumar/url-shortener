@@ -1,6 +1,7 @@
 import * as QRCode from 'qrcode';
-import { prisma } from '../config/database';
-import { logger } from '../utils/logger';
+import { prisma } from '../config/database.js';
+import { logger } from '../utils/logger.js';
+import { config } from '../config/env.js';
 
 export interface QRCodeOptions {
   size?: number;

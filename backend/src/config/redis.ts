@@ -1,6 +1,6 @@
 import { createClient, RedisClientType } from 'redis';
-import { config } from './env';
-import { logger } from '../utils/logger';
+import { config } from './env.js';
+import { logger } from '../utils/logger.js';
 
 class RedisConfig {
   private client: RedisClientType | null = null;
@@ -32,7 +32,6 @@ class RedisConfig {
             return delay;
           },
           connectTimeout: 10000,
-          keepAlive: 30000,
         },
         // Add command timeout
         commandsQueueMaxLength: 1000,

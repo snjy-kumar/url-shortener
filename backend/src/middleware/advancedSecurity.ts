@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { SecurityService, RateLimitInfo } from '../services/securityService';
-import { logger } from '../utils/logger';
+import { SecurityService, RateLimitInfo } from '../services/securityService.js';
+import { logger } from '../utils/logger.js';
 
 export interface SecurityRequest extends Request {
   rateLimitInfo?: RateLimitInfo;
@@ -190,7 +190,6 @@ export const ddosProtection = async (
       req.get('Connection') === 'close';
 
     if (isDDoSPattern) {
-      const ddosKey = `ddos:${ip}`;
       const config = SecurityService.getConfig();
 
       // More aggressive rate limiting for potential DDoS
@@ -294,7 +293,7 @@ export const apiKeyRateLimit = async (
 /**
  * Geo-blocking middleware (placeholder for future implementation)
  */
-export const geoBlocking = (blockedCountries: string[] = []) => {
+export const geoBlocking = (_blockedCountries: string[] = []) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     // TODO: Implement geo-blocking using IP geolocation
     // This would require a geolocation service like MaxMind GeoIP2

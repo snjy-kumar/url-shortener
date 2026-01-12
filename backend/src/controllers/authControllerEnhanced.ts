@@ -1,14 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt, { SignOptions } from 'jsonwebtoken';
-import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import { v4 as uuidv4 } from 'uuid';
-import { prisma } from '../config/database';
-import { config } from '../config/env';
-import { logger } from '../utils/logger';
-import { emailService } from '../services/emailService';
-import { UserRegistration, UserLogin, AuthenticatedRequest } from '../types';
+import { prisma } from '../config/database.js';
+import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { emailService } from '../services/emailService.js';
+import { UserRegistration, UserLogin, AuthenticatedRequest } from '../types/index.js';
 
 export class AuthControllerEnhanced {
   /**
@@ -138,13 +137,13 @@ export class AuthControllerEnhanced {
       const accessToken = jwt.sign(
         { userId: user.id, email: user.email },
         config.JWT_SECRET,
-        { expiresIn: config.JWT_EXPIRES_IN }
+        { expiresIn: config.JWT_EXPIRES_IN } as jwt.SignOptions
       );
 
       const refreshToken = jwt.sign(
         { userId: user.id, type: 'refresh' },
         config.JWT_REFRESH_SECRET,
-        { expiresIn: config.JWT_REFRESH_EXPIRES_IN }
+        { expiresIn: config.JWT_REFRESH_EXPIRES_IN } as jwt.SignOptions
       );
 
       // Store refresh token
@@ -370,13 +369,13 @@ export class AuthControllerEnhanced {
       const accessToken = jwt.sign(
         { userId: user.id, email: user.email },
         config.JWT_SECRET,
-        { expiresIn: config.JWT_EXPIRES_IN }
+        { expiresIn: config.JWT_EXPIRES_IN } as jwt.SignOptions
       );
 
       const refreshToken = jwt.sign(
         { userId: user.id, type: 'refresh' },
         config.JWT_REFRESH_SECRET,
-        { expiresIn: config.JWT_REFRESH_EXPIRES_IN }
+        { expiresIn: config.JWT_REFRESH_EXPIRES_IN } as jwt.SignOptions
       );
 
       // Store refresh token
@@ -426,7 +425,7 @@ export class AuthControllerEnhanced {
    * Refresh access token
    * POST /api/v1/auth/refresh-token
    */
-  static async refreshToken(req: Request, res: Response, next: NextFunction) {
+  static async refreshToken(req: Request, res: Response, _next: NextFunction) {
     try {
       const { refreshToken } = req.body;
 
@@ -479,7 +478,7 @@ export class AuthControllerEnhanced {
       const accessToken = jwt.sign(
         { userId: user.id, email: user.email },
         config.JWT_SECRET,
-        { expiresIn: config.JWT_EXPIRES_IN }
+        { expiresIn: config.JWT_EXPIRES_IN } as jwt.SignOptions
       );
 
       logger.info('Token refreshed successfully', {
@@ -987,7 +986,7 @@ export class AuthControllerEnhanced {
       }
 
       const updateData: any = {};
-      if (name) updateData.name = name;
+      if (name) {updateData.name = name;}
       if (email) {
         updateData.email = email.toLowerCase();
         // Require email verification for new email

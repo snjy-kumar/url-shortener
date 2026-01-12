@@ -1,6 +1,6 @@
-import { prisma } from '../config/database';
-import { logger } from '../utils/logger';
-import { CacheService } from './cacheService';
+import { prisma } from '../config/database.js';
+import { logger } from '../utils/logger.js';
+import { CacheService } from './cacheService.js';
 
 export interface AnalyticsFilter {
   startDate?: string;
@@ -64,7 +64,7 @@ export class AnalyticsService {
         select: { id: true },
       });
 
-      if (!url) return null;
+      if (!url) {return null;}
 
       const whereClause = this.buildWhereClause(url.id, filter);
 
@@ -312,13 +312,13 @@ export class AnalyticsService {
     }));
   }
 
-  private static async getDeviceBreakdown(whereClause: any) {
+  private static async getDeviceBreakdown(_whereClause: any) {
     // Device field doesn't exist in schema, return empty array for now
     // This could be enhanced by parsing userAgent field
     return [];
   }
 
-  private static async getBrowserBreakdown(whereClause: any) {
+  private static async getBrowserBreakdown(_whereClause: any) {
     // Browser field doesn't exist in schema, return empty array for now
     // This could be enhanced by parsing userAgent field
     return [];

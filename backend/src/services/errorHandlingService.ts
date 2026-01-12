@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
-import { logger } from '../utils/logger';
-import { CacheService } from './cacheService';
+import { Request } from 'express';
+import { logger } from '../utils/logger.js';
+import { CacheService } from './cacheService.js';
 
 export enum ErrorCategory {
   VALIDATION = 'validation',
@@ -95,11 +95,11 @@ export class ErrorHandlingService {
     statusCode?: number
   ): ErrorCategory {
     if (statusCode) {
-      if (statusCode === 400) return ErrorCategory.VALIDATION;
-      if (statusCode === 401) return ErrorCategory.AUTHENTICATION;
-      if (statusCode === 403) return ErrorCategory.AUTHORIZATION;
-      if (statusCode === 404) return ErrorCategory.NOT_FOUND;
-      if (statusCode === 429) return ErrorCategory.RATE_LIMIT;
+      if (statusCode === 400) {return ErrorCategory.VALIDATION;}
+      if (statusCode === 401) {return ErrorCategory.AUTHENTICATION;}
+      if (statusCode === 403) {return ErrorCategory.AUTHORIZATION;}
+      if (statusCode === 404) {return ErrorCategory.NOT_FOUND;}
+      if (statusCode === 429) {return ErrorCategory.RATE_LIMIT;}
     }
 
     const message = error?.message?.toLowerCase() || '';

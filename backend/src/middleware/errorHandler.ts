@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { Prisma } from '@prisma/client';
-import { logger } from '../utils/logger';
+import { Prisma } from '../../generated/prisma/client.js';
+import { logger } from '../utils/logger.js';
 import {
   ErrorHandlingService,
-  ErrorCategory,
-} from '../services/errorHandlingService';
+} from '../services/errorHandlingService.js';
 
 interface ErrorResponse {
   success: false;
@@ -22,7 +21,7 @@ export const errorHandler = async (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): Promise<void> => {
   let statusCode = 500;
   let message = 'Internal server error';
@@ -168,7 +167,9 @@ export const errorHandler = async (
 /**
  * Async error wrapper to catch async function errors
  */
-export const asyncErrorHandler = (fn: Function) => {
+export const asyncErrorHandler = (
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+) => {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
@@ -180,7 +181,7 @@ export const asyncErrorHandler = (fn: Function) => {
 export const notFoundHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): Promise<void> => {
   const error = new Error(`Route not found: ${req.method} ${req.originalUrl}`);
   (error as any).status = 404;

@@ -1,1 +1,71 @@
-import { Request } from 'express';\n\n/**\n * Safely extract client IP address from request\n * Handles proxy headers correctly in production\n */\nexport const getClientIp = (req: Request): string => {\n  // When behind a proxy (production)\n  const forwardedFor = req.get('x-forwarded-for');\n  if (forwardedFor) {\n    // x-forwarded-for can be a comma-separated list\n    return forwardedFor.split(',')[0].trim();\n  }\n\n  // Direct connection or fallback\n  return (\n    req.ip ||\n    req.socket.remoteAddress ||\n    req.connection?.remoteAddress ||\n    '0.0.0.0'\n  );\n};\n\n/**\n * Get user agent from request\n */\nexport const getUserAgent = (req: Request): string => {\n  return req.get('User-Agent') || 'unknown';\n};\n\n/**\n * Get referer from request\n */\nexport const getReferer = (req: Request): string | null => {\n  return req.get('Referer') || req.get('Referrer') || null;\n};\n\n/**\n * Sanitize string to prevent XSS\n */\nexport const sanitizeString = (str: string): string => {\n  return str\n    .replace(/[<>\"']/g, '')\n    .replace(/javascript:/gi, '')\n    .replace(/on\\w+=/gi, '')\n    .trim();\n};\n\n/**\n * Validate and sanitize URL\n */\nexport const sanitizeUrl = (url: string): string => {\n  try {\n    const parsed = new URL(url);\n    // Only allow http and https protocols\n    if (!['http:', 'https:'].includes(parsed.protocol)) {\n      throw new Error('Invalid protocol');\n    }\n    return parsed.toString();\n  } catch (error) {\n    throw new Error('Invalid URL format');\n  }\n};\n\n/**\n * Rate limit key generator\n */\nexport const generateRateLimitKey = (req: Request, identifier: string): string => {\n  const ip = getClientIp(req);\n  return `ratelimit:${identifier}:${ip}`;\n};\n
+import { Request } from 'express';
+
+/**
+ * Safely extract client IP address from request
+ * Handles proxy headers correctly in production
+ */
+export const getClientIp = (req: Request): string => {
+  // When behind a proxy (production)
+  const forwardedFor = req.get('x-forwarded-for');
+  if (forwardedFor) {
+    // x-forwarded-for can be a comma-separated list
+    return forwardedFor.split(',')[0]?.trim() || '0.0.0.0';
+  }
+
+  // Direct connection or fallback
+  return (
+    req.ip ||
+    req.socket.remoteAddress ||
+    req.connection?.remoteAddress ||
+    '0.0.0.0'
+  );
+};
+
+/**
+ * Get user agent from request
+ */
+export const getUserAgent = (req: Request): string => {
+  return req.get('User-Agent') || 'unknown';
+};
+
+/**
+ * Get referer from request
+ */
+export const getReferer = (req: Request): string | null => {
+  return req.get('Referer') || req.get('Referrer') || null;
+};
+
+/**
+ * Sanitize string to prevent XSS
+ */
+export const sanitizeString = (str: string): string => {
+  return str
+    .replace(/[<>"']/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .trim();
+};
+
+/**
+ * Validate and sanitize URL
+ */
+export const sanitizeUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    // Only allow http and https protocols
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+    return parsed.toString();
+  } catch (_error) {
+    throw new Error('Invalid URL format');
+  }
+};
+
+/**
+ * Rate limit key generator
+ */
+export const generateRateLimitKey = (req: Request, identifier: string): string => {
+  const ip = getClientIp(req);
+  return `ratelimit:${identifier}:${ip}`;
+};

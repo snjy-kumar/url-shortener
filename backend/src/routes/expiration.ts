@@ -1,6 +1,6 @@
 import express from 'express';
-import { ExpirationController } from '../controllers/expirationController';
-import { authenticateToken } from '../middleware/auth';
+import { ExpirationController } from '../controllers/expirationController.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { body, validationResult } from 'express-validator';
 
 const router = express.Router();

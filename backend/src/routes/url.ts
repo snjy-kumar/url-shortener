@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { UrlController } from '../controllers/urlController';
-import { validateCreateUrl } from '../middleware/validation';
-import { optionalAuthentication, authenticateToken } from '../middleware/auth';
+import { UrlController } from '../controllers/urlController.js';
+import { validateCreateUrl } from '../middleware/validation.js';
+import { optionalAuthentication, authenticateToken } from '../middleware/auth.js';
 import { body, validationResult } from 'express-validator';
 
 const router = Router();

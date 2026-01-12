@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { MonitoringController } from '../controllers/monitoringController';
-import { authenticateToken } from '../middleware/auth';
-import { adminSecurityStack } from '../middleware/advancedSecurity';
+import { MonitoringController } from '../controllers/monitoringController.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { adminSecurityStack } from '../middleware/advancedSecurity.js';
 import { query, param, validationResult } from 'express-validator';
 
 const router = Router();
