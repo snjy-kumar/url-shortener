@@ -84,41 +84,133 @@ export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password }: UserLogin = req.body;
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
       // Find user by email
       const user = await prisma.user.findUnique({
         where: { email },
       });
 
-      if (!user || !user.isActive) {
+      if (!user) {
+        // Don't reveal whether user exists
         res.status(401).json({
           success: false,
-          message: 'Invalid credentials',
+          message: 'Invalid email or password',
+        });
+        return;
+      }
+
+      // Check if account is locked
+      if (user.lockUntil && user.lockUntil > new Date()) {
+        const remainingTime = Math.ceil(
+          (user.lockUntil.getTime() - Date.now()) / 60000
+        );
+        
+        logger.warn('Attempt to access locked account', {
+          userId: user.id,
+          email: user.email,
+          ip: clientIp,
+        });
+        
+        res.status(423).json({
+          success: false,
+          message: `Account is temporarily locked. Try again in ${remainingTime} minutes.`,
+          code: 'ACCOUNT_LOCKED',
+        });
+        return;
+      }
+
+      // Check if account is active
+      if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          message: 'Account is disabled',
+          code: 'ACCOUNT_DISABLED',
         });
         return;
       }
 
       // Verify password
       const isPasswordValid = await bcrypt.compare(password, user.password);
+      
       if (!isPasswordValid) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid credentials',
+        // Increment login attempts
+        const newAttempts = user.loginAttempts + 1;
+        const shouldLock = newAttempts >= config.MAX_LOGIN_ATTEMPTS;
+        
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            loginAttempts: newAttempts,
+            lockUntil: shouldLock
+              ? new Date(Date.now() + config.LOCK_TIME)
+              : null,
+          },
         });
+        
+        logger.warn('Failed login attempt', {
+          userId: user.id,
+          email: user.email,
+          attempts: newAttempts,
+          locked: shouldLock,
+          ip: clientIp,
+        });
+        
+        if (shouldLock) {
+          res.status(423).json({
+            success: false,
+            message: 'Too many failed attempts. Account locked temporarily.',
+            code: 'ACCOUNT_LOCKED',
+          });
+        } else {
+          const remainingAttempts = config.MAX_LOGIN_ATTEMPTS - newAttempts;
+          res.status(401).json({
+            success: false,
+            message: `Invalid email or password. ${remainingAttempts} attempts remaining.`,
+          });
+        }
         return;
       }
 
-      // Generate JWT token
-      const token = jwt.sign(
+      // Reset login attempts on successful login
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          loginAttempts: 0,
+          lockUntil: null,
+          lastLoginAt: new Date(),
+          lastLoginIp: clientIp,
+        },
+      });
+
+      // Generate tokens
+      const accessToken = jwt.sign(
         { userId: user.id, email: user.email },
         config.JWT_SECRET,
-        { expiresIn: '24h' }
+        { expiresIn: config.JWT_EXPIRES_IN, issuer: 'url-shortener' }
       );
+      
+      const refreshToken = jwt.sign(
+        { userId: user.id, email: user.email, type: 'refresh' },
+        config.JWT_REFRESH_SECRET,
+        { expiresIn: config.JWT_REFRESH_EXPIRES_IN, issuer: 'url-shortener' }
+      );
+
+      // Store refresh token in database
+      await prisma.refreshToken.create({
+        data: {
+          token: refreshToken,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+          ipAddress: clientIp,
+          userAgent: req.get('User-Agent') || null,
+        },
+      });
 
       logger.info('User logged in successfully', {
         userId: user.id,
         email: user.email,
-        ip: req.ip,
+        ip: clientIp,
       });
 
       res.json({
@@ -132,7 +224,9 @@ export class AuthController {
             isActive: user.isActive,
             createdAt: user.createdAt,
           },
-          token,
+          accessToken,
+          refreshToken,
+          expiresIn: config.JWT_EXPIRES_IN,
         },
       });
     } catch (error) {

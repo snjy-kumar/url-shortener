@@ -45,7 +45,7 @@ export class QRCodeService {
       } = options;
 
       // Construct the full short URL
-      const baseUrl = process.env['BASE_URL'] || 'http://localhost:3001';
+      const baseUrl = config.BASE_URL;
       const shortUrl = `${baseUrl}/${shortCode}`;
 
       let qrCodeData: string;
@@ -128,7 +128,7 @@ export class QRCodeService {
       } = options;
 
       // Construct the full short URL
-      const baseUrl = process.env['BASE_URL'] || 'http://localhost:3001';
+      const baseUrl = config.BASE_URL;
       const shortUrl = `${baseUrl}/${shortCode}`;
 
       let qrCodeBuffer: Buffer;

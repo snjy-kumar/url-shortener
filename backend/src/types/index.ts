@@ -11,6 +11,7 @@ export interface User {
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
+  id?: string; // Request ID
 }
 
 export interface CreateUrlRequest {

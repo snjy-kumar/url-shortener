@@ -1,12 +1,14 @@
 import { config } from '../config/env';
+import { randomBytes } from 'crypto';
 
-// Simple short code generator using Math.random for now
+// Cryptographically secure short code generator
 export const generateShortCode = (): string => {
   const chars =
     '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  const bytes = randomBytes(config.SHORT_CODE_LENGTH);
   let result = '';
   for (let i = 0; i < config.SHORT_CODE_LENGTH; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(bytes[i] % chars.length);
   }
   return result;
 };
@@ -60,16 +62,22 @@ export const generateShortCodeFromId = (id: number): string => {
 };
 
 /**
- * Validate if a string is a valid URL
+ * Blacklisted domains/patterns for security
  */
-export const isValidUrl = (url: string): boolean => {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
+const BLACKLISTED_DOMAINS = [
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '10.',
+  '172.16.',
+  '192.168.',
+  'metadata.google.internal',
+  '169.254.169.254', // AWS metadata
+];
+
+/**
+ * Check if URL is potentially malicious
+ */\nexport const isSafeUrl = (url: string): boolean => {\n  try {\n    const urlObj = new URL(url);\n    const hostname = urlObj.hostname.toLowerCase();\n    \n    // Check blacklisted domains\n    for (const blocked of BLACKLISTED_DOMAINS) {\n      if (hostname === blocked || hostname.startsWith(blocked)) {\n        return false;\n      }\n    }\n    \n    // Prevent SSRF - block private IPs\n    if (/^(10|172\\.(1[6-9]|2[0-9]|3[0-1])|192\\.168)\\./.test(hostname)) {\n      return false;\n    }\n    \n    return true;\n  } catch {\n    return false;\n  }\n};\n\n/**\n * Validate if a string is a valid URL\n */\nexport const isValidUrl = (url: string): boolean => {\n  try {\n    const urlObj = new URL(url);\n    const isHttps = urlObj.protocol === 'http:' || urlObj.protocol === 'https:';\n    const isSafe = isSafeUrl(url);\n    return isHttps && isSafe;\n  } catch {\n    return false;\n  }\n};
 
 /**
  * Normalize URL by adding protocol if missing
