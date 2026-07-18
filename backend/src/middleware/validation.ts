@@ -1,5 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
+import { isValidUrl, normalizeUrl } from '../utils/url.js';
+
+const handleValidationErrors = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: errors.array().map((error) => ({
+        field: error.type === 'field' ? error.path : 'unknown',
+        message: error.msg,
+      })),
+    });
+    return;
+  }
+  next();
+};
 
 export const validateCreateUrl = [
   body('originalUrl')
@@ -7,26 +28,15 @@ export const validateCreateUrl = [
     .withMessage('Original URL is required')
     .isLength({ min: 1, max: 2048 })
     .withMessage('URL must be between 1 and 2048 characters')
-    .custom((value) => {
-      // Basic URL validation
-      const urlPattern = /^(https?:\/\/)?([\w\-\.]+)\.([a-z]{2,})(\/.*)?$/i;
-      const normalizedUrl = value.startsWith('http')
-        ? value
-        : `https://${value}`;
-
-      try {
-        new URL(normalizedUrl);
-        return true;
-      } catch {
-        if (!urlPattern.test(value)) {
-          throw new Error('Please provide a valid URL');
-        }
-        return true;
+    .custom((value: string) => {
+      if (!isValidUrl(normalizeUrl(value))) {
+        throw new Error('Please provide a valid http(s) URL');
       }
+      return true;
     }),
 
   body('customAlias')
-    .optional()
+    .optional({ values: 'falsy' })
     .isLength({ min: 3, max: 50 })
     .withMessage('Custom alias must be between 3 and 50 characters')
     .matches(/^[a-zA-Z0-9_-]+$/)
@@ -34,100 +44,5 @@ export const validateCreateUrl = [
       'Custom alias can only contain letters, numbers, hyphens, and underscores'
     ),
 
-  body('description')
-    .optional()
-    .isLength({ max: 500 })
-    .withMessage('Description must not exceed 500 characters'),
-
-  body('expiresAt')
-    .optional()
-    .isISO8601()
-    .withMessage('Expiration date must be a valid ISO 8601 date')
-    .custom((value) => {
-      if (new Date(value) <= new Date()) {
-        throw new Error('Expiration date must be in the future');
-      }
-      return true;
-    }),
-
-  // Middleware to handle validation errors
-  (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array().map((error) => ({
-          field: error.type === 'field' ? error.path : 'unknown',
-          message: error.msg,
-        })),
-      });
-      return;
-    }
-    next();
-  },
-];
-
-export const validateRegister = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email address'),
-
-  body('password')
-    .isLength({ min: 8, max: 128 })
-    .withMessage('Password must be between 8 and 128 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage(
-      'Password must contain at least one lowercase letter, one uppercase letter, and one number'
-    ),
-
-  body('name')
-    .optional()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Name must be between 1 and 100 characters')
-    .trim(),
-
-  // Middleware to handle validation errors
-  (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array().map((error) => ({
-          field: error.type === 'field' ? error.path : 'unknown',
-          message: error.msg,
-        })),
-      });
-      return;
-    }
-    next();
-  },
-];
-
-export const validateLogin = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email address'),
-
-  body('password').notEmpty().withMessage('Password is required'),
-
-  // Middleware to handle validation errors
-  (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array().map((error) => ({
-          field: error.type === 'field' ? error.path : 'unknown',
-          message: error.msg,
-        })),
-      });
-      return;
-    }
-    next();
-  },
+  handleValidationErrors,
 ];

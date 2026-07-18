@@ -1,36 +1,37 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #1a2332;
+  --muted: #5c6b7a;
+  --paper: #f3f6f4;
+  --sea: #1f6f5b;
+  --sea-dark: #175647;
+  --line: #d5ddd8;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-paper: var(--paper);
+  --color-sea: var(--sea);
+  --color-sea-dark: var(--sea-dark);
+  --color-line: var(--line);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #dce8e2 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #e8ebe4 0%, transparent 50%),
+    var(--paper);
 }
 
-a[href],
-button,
-[role="button"],
-input[type="button"],
-input[type="submit"],
-label[for],
-.cursor-pointer {
+a,
+button {
   cursor: pointer;
 }

@@ -1,25 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
-import { ToastProvider } from "../components/providers/ToastProvider";
-import { AuthProvider } from "../contexts/AuthContext";
-import { ErrorBoundary } from "../components/ErrorBoundary";
-import { Header } from "../components/Header";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const display = Fraunces({
   subsets: ["latin"],
+  variable: "--font-display",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const sans = Source_Sans_3({
   subsets: ["latin"],
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
-  title: "URL Shortener - Fast & Reliable Link Management",
-  description:
-    "Create short URLs instantly with analytics, custom aliases, and secure link management.",
+  title: "Shortlink",
+  description: "Paste a long URL. Get a short one.",
 };
 
 export default function RootLayout({
@@ -29,16 +24,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ErrorBoundary>
-          <AuthProvider>
-            <Header />
-            {children}
-            <ToastProvider />
-          </AuthProvider>
-        </ErrorBoundary>
+      <body className={`${display.variable} ${sans.variable} antialiased`}>
+        {children}
       </body>
     </html>
   );

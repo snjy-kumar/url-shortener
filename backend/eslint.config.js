@@ -55,14 +55,10 @@ export default [
     ignores: [
       'dist/**',
       'node_modules/**',
+      'src/generated/**',
       'generated/**',
       '*.js',
-      'tests/**',
-      '**/*.test.ts',
-      '**/*.spec.ts',
-      'jest.config.js',
       'eslint.config.js',
-      '.eslintrc.js',
     ],
   },
 ];

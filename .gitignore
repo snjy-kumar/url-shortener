@@ -7,9 +7,11 @@ node_modules/
 coverage/
 .nyc_output
 
-# Production
+# Production / build
 dist/
 build/
+.next/
+out/
 
 # Misc
 .DS_Store
@@ -39,10 +41,10 @@ logs/
 *~
 
 # OS
-.DS_Store
 Thumbs.db
 
+# Tooling output (local knowledge graph)
+graphify-out/
 
-# markdown files
-*.md
-!README.md
+# TypeScript
+*.tsbuildinfo
