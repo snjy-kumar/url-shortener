@@ -7,7 +7,6 @@ import { randomUUID } from 'crypto';
 
 import { config } from './config/env.js';
 import { prisma } from './config/database.js';
-import { redisConfig } from './config/redis.js';
 import { logger } from './utils/logger.js';
 import { asyncHandler } from './utils/asyncHandler.js';
 import {
@@ -16,7 +15,6 @@ import {
   notFoundHandler,
 } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
-import { CacheService } from './services/cacheService.js';
 import { UrlController } from './controllers/urlController.js';
 import urlRoutes from './routes/url.js';
 
@@ -79,7 +77,6 @@ app.get(
       timestamp: new Date().toISOString(),
       services: {
         database: 'unknown',
-        cache: 'unknown',
       },
     };
 
@@ -90,9 +87,6 @@ app.get(
       checks.services.database = 'unhealthy';
       checks.status = 'Service Unavailable';
     }
-
-    const cache = await CacheService.healthCheck();
-    checks.services.cache = cache.status;
 
     res.status(checks.status === 'OK' ? 200 : 503).json(checks);
   })
@@ -110,13 +104,6 @@ const startServer = async () => {
   await prisma.$connect();
   logger.info('Database connected');
 
-  try {
-    await redisConfig.connect();
-    logger.info('Redis connected');
-  } catch (error) {
-    logger.warn('Redis unavailable — continuing without cache', { error });
-  }
-
   server = app.listen(config.PORT, () => {
     logger.info(`Server listening on port ${config.PORT}`);
   });
@@ -131,7 +118,6 @@ const shutdown = async (signal: string) => {
     });
   }
   await prisma.$disconnect();
-  await redisConfig.quit();
   process.exit(0);
 };
 

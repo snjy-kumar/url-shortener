@@ -8,6 +8,6 @@ npm run db:migrate
 npm run dev
 ```
 
-Core: shorten URLs + redirect. Redis optional.
+Core: shorten URLs + redirect via PostgreSQL.
 
 See root `README.md` for full setup.

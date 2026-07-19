@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "urls" ADD COLUMN "is_active" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "urls" ADD COLUMN "click_count" INTEGER NOT NULL DEFAULT 0;

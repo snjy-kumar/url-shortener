@@ -1,7 +1,24 @@
-import type { ApiResponse, CreateUrlRequest, Url } from "@/types";
+import type {
+  ApiResponse,
+  CreateUrlRequest,
+  UpdateUrlRequest,
+  Url,
+} from "@/types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+async function parseUrlResponse(res: Response): Promise<Url> {
+  const json = (await res.json()) as ApiResponse<Url>;
+
+  if (!res.ok || !json.success || !json.data) {
+    const detail =
+      json.errors?.[0]?.message || json.message || "Request failed";
+    throw new Error(detail);
+  }
+
+  return json.data;
+}
 
 export async function createShortUrl(
   body: CreateUrlRequest
@@ -15,12 +32,44 @@ export async function createShortUrl(
     body: JSON.stringify(body),
   });
 
-  const json = (await res.json()) as ApiResponse<Url>;
+  return parseUrlResponse(res);
+}
 
-  if (!res.ok || !json.success || !json.data) {
-    const detail = json.errors?.[0]?.message || json.message || "Request failed";
+export async function getShortUrl(shortCode: string): Promise<Url> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/${shortCode}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  return parseUrlResponse(res);
+}
+
+export async function updateShortUrl(
+  shortCode: string,
+  body: UpdateUrlRequest
+): Promise<Url> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/${shortCode}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  return parseUrlResponse(res);
+}
+
+export async function deleteShortUrl(shortCode: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/${shortCode}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+
+  const json = (await res.json()) as ApiResponse;
+
+  if (!res.ok || !json.success) {
+    const detail =
+      json.errors?.[0]?.message || json.message || "Request failed";
     throw new Error(detail);
   }
-
-  return json.data;
 }

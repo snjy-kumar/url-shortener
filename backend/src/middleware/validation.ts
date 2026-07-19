@@ -46,3 +46,34 @@ export const validateCreateUrl = [
 
   handleValidationErrors,
 ];
+
+export const validateUpdateUrl = [
+  body('originalUrl')
+    .optional()
+    .isLength({ min: 1, max: 2048 })
+    .withMessage('URL must be between 1 and 2048 characters')
+    .custom((value: string) => {
+      if (!isValidUrl(normalizeUrl(value))) {
+        throw new Error('Please provide a valid http(s) URL');
+      }
+      return true;
+    }),
+
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean'),
+
+  body().custom((_, { req }) => {
+    const { originalUrl, isActive } = req.body as {
+      originalUrl?: unknown;
+      isActive?: unknown;
+    };
+    if (originalUrl === undefined && isActive === undefined) {
+      throw new Error('Provide originalUrl and/or isActive');
+    }
+    return true;
+  }),
+
+  handleValidationErrors,
+];

@@ -13,7 +13,6 @@ interface Config {
   CORS_ORIGIN: string;
   LOG_LEVEL: 'error' | 'warn' | 'info' | 'debug';
   LOG_FILE_PATH: string;
-  REDIS_URL?: string;
   TRUST_PROXY: boolean;
 }
 
@@ -56,6 +55,5 @@ export const config: Config = {
   CORS_ORIGIN: required('CORS_ORIGIN'),
   LOG_LEVEL: (process.env['LOG_LEVEL'] as Config['LOG_LEVEL']) || 'info',
   LOG_FILE_PATH: required('LOG_FILE_PATH', 'logs/app.log'),
-  REDIS_URL: process.env['REDIS_URL'] || undefined,
   TRUST_PROXY: (process.env['TRUST_PROXY'] || 'false').toLowerCase() === 'true',
 };

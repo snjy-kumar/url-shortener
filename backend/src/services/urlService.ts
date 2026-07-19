@@ -7,13 +7,18 @@ import {
   normalizeUrl,
 } from '../utils/url.js';
 import { AppError } from '../utils/errors.js';
-import { CacheService } from './cacheService.js';
-import { CreateUrlRequest, UrlResponse } from '../types/index.js';
+import {
+  CreateUrlRequest,
+  UpdateUrlRequest,
+  UrlResponse,
+} from '../types/index.js';
 
 type UrlRow = {
   id: number;
   shortCode: string;
   originalUrl: string;
+  isActive: boolean;
+  clickCount: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -58,26 +63,71 @@ export class UrlService {
     return this.format(url);
   }
 
+  static async getByShortCode(shortCode: string): Promise<UrlResponse> {
+    const url = await this.findOrThrow(shortCode);
+    return this.format(url);
+  }
+
+  static async updateByShortCode(
+    shortCode: string,
+    data: UpdateUrlRequest
+  ): Promise<UrlResponse> {
+    await this.findOrThrow(shortCode);
+
+    const patch: { originalUrl?: string; isActive?: boolean } = {};
+
+    if (data.originalUrl !== undefined) {
+      const normalizedUrl = normalizeUrl(data.originalUrl);
+      if (!isValidUrl(normalizedUrl)) {
+        throw new AppError('Invalid URL provided', 400);
+      }
+      patch.originalUrl = normalizedUrl;
+    }
+
+    if (data.isActive !== undefined) {
+      patch.isActive = data.isActive;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      throw new AppError('No changes provided', 400);
+    }
+
+    const url = await prisma.url.update({
+      where: { shortCode },
+      data: patch,
+    });
+
+    return this.format(url);
+  }
+
+  static async deleteByShortCode(shortCode: string): Promise<void> {
+    await this.findOrThrow(shortCode);
+    await prisma.url.delete({ where: { shortCode } });
+  }
+
   static async resolveRedirect(shortCode: string): Promise<{
     id: number;
     originalUrl: string;
   } | null> {
-    const cached = await CacheService.getCachedUrl(shortCode);
-    if (cached) {
-      return { id: cached.id, originalUrl: cached.originalUrl };
-    }
-
     const url = await prisma.url.findUnique({ where: { shortCode } });
-    if (!url) {
+    if (!url || !url.isActive) {
       return null;
     }
 
-    await CacheService.cacheUrl(shortCode, {
-      id: url.id,
-      originalUrl: url.originalUrl,
+    await prisma.url.update({
+      where: { id: url.id },
+      data: { clickCount: { increment: 1 } },
     });
 
     return { id: url.id, originalUrl: url.originalUrl };
+  }
+
+  private static async findOrThrow(shortCode: string): Promise<UrlRow> {
+    const url = await prisma.url.findUnique({ where: { shortCode } });
+    if (!url) {
+      throw new AppError('URL not found', 404);
+    }
+    return url;
   }
 
   private static async generateUniqueShortCode(): Promise<string> {
@@ -100,6 +150,8 @@ export class UrlService {
       shortCode: url.shortCode,
       originalUrl: url.originalUrl,
       shortUrl: generateShortUrl(url.shortCode),
+      isActive: url.isActive,
+      clickCount: url.clickCount,
       createdAt: url.createdAt.toISOString(),
       updatedAt: url.updatedAt.toISOString(),
     };
