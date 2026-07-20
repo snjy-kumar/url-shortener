@@ -22,6 +22,66 @@ const handleValidationErrors = (
   next();
 };
 
+const expiryFieldValidators = [
+  body('expiresAt')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null || value === '') {
+        return true;
+      }
+      if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+        throw new Error('expiresAt must be an ISO datetime or null');
+      }
+      return true;
+    }),
+
+  body('expiresIn')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null || value === '') {
+        return true;
+      }
+      if (typeof value === 'number') {
+        if (!Number.isFinite(value) || value <= 0) {
+          throw new Error('expiresIn must be a positive number of seconds');
+        }
+        return true;
+      }
+      if (typeof value === 'string') {
+        const raw = value.trim().toLowerCase();
+        if (/^\d+$/.test(raw) || /^\d+(?:\.\d+)?(s|m|h|d|w)$/.test(raw)) {
+          return true;
+        }
+      }
+      throw new Error('expiresIn must look like 30m, 12h, 7d, 1w, or seconds');
+    }),
+
+  body('maxClicks')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null) {
+        return true;
+      }
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+        throw new Error('maxClicks must be a positive integer or null');
+      }
+      return true;
+    }),
+
+  body().custom((_, { req }) => {
+    const { expiresAt, expiresIn } = req.body as {
+      expiresAt?: unknown;
+      expiresIn?: unknown;
+    };
+    const atSet = expiresAt !== undefined && expiresAt !== null && expiresAt !== '';
+    const inSet = expiresIn !== undefined && expiresIn !== null && expiresIn !== '';
+    if (atSet && inSet) {
+      throw new Error('Provide expiresAt or expiresIn, not both');
+    }
+    return true;
+  }),
+];
+
 export const validateCreateUrl = [
   body('originalUrl')
     .notEmpty()
@@ -42,8 +102,10 @@ export const validateCreateUrl = [
     .matches(/^[a-zA-Z0-9_-]+$/)
     .withMessage(
       'Custom alias can only contain letters, numbers, hyphens, and underscores'
-    ),
+    )
+    .customSanitizer((value: string) => value.toLowerCase()),
 
+  ...expiryFieldValidators,
   handleValidationErrors,
 ];
 
@@ -64,13 +126,21 @@ export const validateUpdateUrl = [
     .isBoolean()
     .withMessage('isActive must be a boolean'),
 
+  ...expiryFieldValidators,
+
   body().custom((_, { req }) => {
-    const { originalUrl, isActive } = req.body as {
-      originalUrl?: unknown;
-      isActive?: unknown;
-    };
-    if (originalUrl === undefined && isActive === undefined) {
-      throw new Error('Provide originalUrl and/or isActive');
+    const bodyData = req.body as Record<string, unknown>;
+    const keys = [
+      'originalUrl',
+      'isActive',
+      'expiresAt',
+      'expiresIn',
+      'maxClicks',
+    ];
+    if (!keys.some((key) => bodyData[key] !== undefined)) {
+      throw new Error(
+        'Provide originalUrl, isActive, expiresAt, expiresIn, and/or maxClicks'
+      );
     }
     return true;
   }),

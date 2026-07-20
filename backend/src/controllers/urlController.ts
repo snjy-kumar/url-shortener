@@ -4,6 +4,18 @@ import { CreateUrlRequest, UpdateUrlRequest } from '../types/index.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { asStringParam } from '../utils/request.js';
 import { AppError } from '../utils/errors.js';
+import {
+  deadLinkMessage,
+  renderDeadLinkPage,
+} from '../utils/deadLinkPage.js';
+
+const wantsHtml = (req: Request): boolean => {
+  const accept = req.get('Accept') || '';
+  if (accept.includes('application/json') && !accept.includes('text/html')) {
+    return false;
+  }
+  return req.accepts(['html', 'json']) === 'html' || !accept.includes('json');
+};
 
 export class UrlController {
   static createShortUrl = asyncHandler(async (req: Request, res: Response) => {
@@ -61,14 +73,31 @@ export class UrlController {
   static redirectToOriginal = asyncHandler(async (req: Request, res: Response) => {
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {
+      if (wantsHtml(req)) {
+        res.status(404).type('html').send(renderDeadLinkPage('not_found'));
+        return;
+      }
       throw new AppError('Not found', 404);
     }
 
     const resolved = await UrlService.resolveRedirect(shortCode);
-    if (!resolved) {
-      throw new AppError('URL not found', 404);
+    if (resolved.ok) {
+      res.redirect(302, resolved.originalUrl);
+      return;
     }
 
-    res.redirect(302, resolved.originalUrl);
+    const status = resolved.reason === 'not_found' ? 404 : 410;
+    const message = deadLinkMessage(resolved.reason);
+
+    if (wantsHtml(req)) {
+      res.status(status).type('html').send(renderDeadLinkPage(resolved.reason));
+      return;
+    }
+
+    res.status(status).json({
+      success: false,
+      message,
+      reason: resolved.reason,
+    });
   });
 }

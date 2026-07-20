@@ -1,8 +1,11 @@
 import { randomBytes } from 'crypto';
 import { config } from '../config/env.js';
 
-const ALPHABET =
-  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+/** Lowercase alphabet — all codes stored/compared case-insensitively. */
+const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
+const ALPHABET_LEN = ALPHABET.length;
+/** Largest multiple of 36 under 256 — rejection sampling for uniform picks. */
+const UNIFORM_BYTE_LIMIT = 252;
 
 export const RESERVED_SHORT_CODES = new Set([
   'api',
@@ -11,12 +14,22 @@ export const RESERVED_SHORT_CODES = new Set([
   'robots.txt',
 ]);
 
+export const normalizeShortCode = (code: string): string =>
+  code.trim().toLowerCase();
+
 export const generateShortCode = (): string => {
-  const bytes = randomBytes(config.SHORT_CODE_LENGTH);
   let result = '';
-  for (let i = 0; i < config.SHORT_CODE_LENGTH; i++) {
-    const byte = bytes[i] ?? 0;
-    result += ALPHABET.charAt(byte % ALPHABET.length);
+  while (result.length < config.SHORT_CODE_LENGTH) {
+    const bytes = randomBytes(config.SHORT_CODE_LENGTH - result.length + 4);
+    for (const byte of bytes) {
+      if (byte >= UNIFORM_BYTE_LIMIT) {
+        continue;
+      }
+      result += ALPHABET.charAt(byte % ALPHABET_LEN);
+      if (result.length === config.SHORT_CODE_LENGTH) {
+        break;
+      }
+    }
   }
   return result;
 };
@@ -25,6 +38,8 @@ const BLOCKED_HOSTS = [
   'localhost',
   '127.0.0.1',
   '0.0.0.0',
+  '::1',
+  '[::1]',
   'metadata.google.internal',
   '169.254.169.254',
 ];
@@ -32,12 +47,15 @@ const BLOCKED_HOSTS = [
 const isSafeUrl = (url: string): boolean => {
   try {
     const { hostname, protocol } = new URL(url);
-    const host = hostname.toLowerCase();
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
 
     if (protocol !== 'http:' && protocol !== 'https:') {
       return false;
     }
-    if (BLOCKED_HOSTS.includes(host)) {
+    if (BLOCKED_HOSTS.includes(host) || BLOCKED_HOSTS.includes(hostname.toLowerCase())) {
+      return false;
+    }
+    if (host === '::1' || host.endsWith('.localhost')) {
       return false;
     }
     if (/^(10|172\.(1[6-9]|2\d|3[0-1])|192\.168)\./.test(host)) {
@@ -70,4 +88,4 @@ export const normalizeUrl = (url: string): string => {
 };
 
 export const generateShortUrl = (shortCode: string): string =>
-  `${config.BASE_URL}/${shortCode}`;
+  `${config.BASE_URL}/${normalizeShortCode(shortCode)}`;

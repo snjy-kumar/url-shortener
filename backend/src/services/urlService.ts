@@ -1,12 +1,16 @@
+import { Prisma } from '../generated/prisma/client.js';
 import { prisma } from '../config/database.js';
 import {
   RESERVED_SHORT_CODES,
   generateShortCode,
   generateShortUrl,
   isValidUrl,
+  normalizeShortCode,
   normalizeUrl,
 } from '../utils/url.js';
+import { isLinkExpired, resolveExpiryPatch } from '../utils/expiry.js';
 import { AppError } from '../utils/errors.js';
+import type { DeadLinkReason } from '../utils/deadLinkPage.js';
 import {
   CreateUrlRequest,
   UpdateUrlRequest,
@@ -19,9 +23,18 @@ type UrlRow = {
   originalUrl: string;
   isActive: boolean;
   clickCount: number;
+  expiresAt: Date | null;
+  maxClicks: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type RedirectResult =
+  | { ok: true; originalUrl: string }
+  | { ok: false; reason: DeadLinkReason };
+
+const isUniqueViolation = (error: unknown): boolean =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 export class UrlService {
   static async createShortUrl(data: CreateUrlRequest): Promise<UrlResponse> {
@@ -30,37 +43,66 @@ export class UrlService {
       throw new AppError('Invalid URL provided', 400);
     }
 
-    let shortCode: string;
+    const expiry = resolveExpiryPatch({
+      expiresAt: data.expiresAt,
+      expiresIn: data.expiresIn,
+      maxClicks: data.maxClicks,
+    });
+
     if (data.customAlias) {
-      const alias = data.customAlias.toLowerCase();
-      if (RESERVED_SHORT_CODES.has(alias)) {
+      const shortCode = normalizeShortCode(data.customAlias);
+      if (RESERVED_SHORT_CODES.has(shortCode)) {
         throw new AppError('This alias is reserved', 400);
       }
-      if (!/^[a-zA-Z0-9_-]{3,50}$/.test(data.customAlias)) {
+      if (!/^[a-z0-9_-]{3,50}$/.test(shortCode)) {
         throw new AppError(
           'Custom alias must be 3-50 characters (letters, numbers, - or _)',
           400
         );
       }
-      const taken = await prisma.url.findUnique({
-        where: { shortCode: data.customAlias },
-      });
-      if (taken) {
-        throw new AppError('Custom alias already exists', 409);
+
+      try {
+        const url = await prisma.url.create({
+          data: {
+            shortCode,
+            originalUrl: normalizedUrl,
+            expiresAt: expiry.expiresAt ?? null,
+            maxClicks: expiry.maxClicks ?? null,
+          },
+        });
+        return this.format(url);
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new AppError('Custom alias already exists', 409);
+        }
+        throw error;
       }
-      shortCode = data.customAlias;
-    } else {
-      shortCode = await this.generateUniqueShortCode();
     }
 
-    const url = await prisma.url.create({
-      data: {
-        shortCode,
-        originalUrl: normalizedUrl,
-      },
-    });
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const shortCode = generateShortCode();
+      if (RESERVED_SHORT_CODES.has(shortCode)) {
+        continue;
+      }
+      try {
+        const url = await prisma.url.create({
+          data: {
+            shortCode,
+            originalUrl: normalizedUrl,
+            expiresAt: expiry.expiresAt ?? null,
+            maxClicks: expiry.maxClicks ?? null,
+          },
+        });
+        return this.format(url);
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
 
-    return this.format(url);
+    throw new AppError('Unable to generate unique short code', 500);
   }
 
   static async getByShortCode(shortCode: string): Promise<UrlResponse> {
@@ -72,9 +114,15 @@ export class UrlService {
     shortCode: string,
     data: UpdateUrlRequest
   ): Promise<UrlResponse> {
-    await this.findOrThrow(shortCode);
+    const code = normalizeShortCode(shortCode);
+    await this.findOrThrow(code);
 
-    const patch: { originalUrl?: string; isActive?: boolean } = {};
+    const patch: {
+      originalUrl?: string;
+      isActive?: boolean;
+      expiresAt?: Date | null;
+      maxClicks?: number | null;
+    } = {};
 
     if (data.originalUrl !== undefined) {
       const normalizedUrl = normalizeUrl(data.originalUrl);
@@ -88,12 +136,27 @@ export class UrlService {
       patch.isActive = data.isActive;
     }
 
+    if (
+      data.expiresAt !== undefined ||
+      data.expiresIn !== undefined ||
+      data.maxClicks !== undefined
+    ) {
+      Object.assign(
+        patch,
+        resolveExpiryPatch({
+          expiresAt: data.expiresAt,
+          expiresIn: data.expiresIn,
+          maxClicks: data.maxClicks,
+        })
+      );
+    }
+
     if (Object.keys(patch).length === 0) {
       throw new AppError('No changes provided', 400);
     }
 
     const url = await prisma.url.update({
-      where: { shortCode },
+      where: { shortCode: code },
       data: patch,
     });
 
@@ -101,47 +164,60 @@ export class UrlService {
   }
 
   static async deleteByShortCode(shortCode: string): Promise<void> {
-    await this.findOrThrow(shortCode);
-    await prisma.url.delete({ where: { shortCode } });
+    const code = normalizeShortCode(shortCode);
+    await this.findOrThrow(code);
+    await prisma.url.delete({ where: { shortCode: code } });
   }
 
-  static async resolveRedirect(shortCode: string): Promise<{
-    id: number;
-    originalUrl: string;
-  } | null> {
-    const url = await prisma.url.findUnique({ where: { shortCode } });
-    if (!url || !url.isActive) {
-      return null;
+  static async resolveRedirect(shortCode: string): Promise<RedirectResult> {
+    const code = normalizeShortCode(shortCode);
+
+    const rows = await prisma.$queryRaw<
+      Array<{ id: number; original_url: string }>
+    >`
+      UPDATE urls
+      SET
+        click_count = click_count + 1,
+        updated_at = NOW()
+      WHERE short_code = ${code}
+        AND is_active = true
+        AND (expires_at IS NULL OR expires_at > NOW())
+        AND (max_clicks IS NULL OR click_count < max_clicks)
+      RETURNING id, original_url
+    `;
+
+    const hit = rows[0];
+    if (hit) {
+      return { ok: true, originalUrl: hit.original_url };
     }
 
-    await prisma.url.update({
-      where: { id: url.id },
-      data: { clickCount: { increment: 1 } },
-    });
+    return this.explainRedirectFailure(code);
+  }
 
-    return { id: url.id, originalUrl: url.originalUrl };
+  private static async explainRedirectFailure(
+    shortCode: string
+  ): Promise<RedirectResult> {
+    const url = await prisma.url.findUnique({ where: { shortCode } });
+    if (!url) {
+      return { ok: false, reason: 'not_found' };
+    }
+    if (!url.isActive) {
+      return { ok: false, reason: 'disabled' };
+    }
+    if (isLinkExpired(url)) {
+      return { ok: false, reason: 'expired' };
+    }
+    // Lost race on last click / concurrent disable
+    return { ok: false, reason: 'expired' };
   }
 
   private static async findOrThrow(shortCode: string): Promise<UrlRow> {
-    const url = await prisma.url.findUnique({ where: { shortCode } });
+    const code = normalizeShortCode(shortCode);
+    const url = await prisma.url.findUnique({ where: { shortCode: code } });
     if (!url) {
       throw new AppError('URL not found', 404);
     }
     return url;
-  }
-
-  private static async generateUniqueShortCode(): Promise<string> {
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const shortCode = generateShortCode();
-      if (RESERVED_SHORT_CODES.has(shortCode.toLowerCase())) {
-        continue;
-      }
-      const existing = await prisma.url.findUnique({ where: { shortCode } });
-      if (!existing) {
-        return shortCode;
-      }
-    }
-    throw new AppError('Unable to generate unique short code', 500);
   }
 
   private static format(url: UrlRow): UrlResponse {
@@ -152,6 +228,9 @@ export class UrlService {
       shortUrl: generateShortUrl(url.shortCode),
       isActive: url.isActive,
       clickCount: url.clickCount,
+      expiresAt: url.expiresAt ? url.expiresAt.toISOString() : null,
+      maxClicks: url.maxClicks,
+      isExpired: isLinkExpired(url),
       createdAt: url.createdAt.toISOString(),
       updatedAt: url.updatedAt.toISOString(),
     };

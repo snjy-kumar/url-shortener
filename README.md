@@ -9,6 +9,9 @@ Simple full-stack URL shortener: Next.js UI + Express API + PostgreSQL.
 - Edit destination (same short link)
 - Disable / enable / delete
 - Click count on redirect
+- Flexible expiry: relative (`30m`, `7d`), absolute datetime, and/or max clicks
+- Case-insensitive short codes; race-safe create + max-click redirects
+- HTML 404/410 pages for dead links in browsers
 - Redirect via PostgreSQL
 
 ## Stack
@@ -76,12 +79,18 @@ Open **http://localhost:3001**
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/v1/urls/shorten` | Create short link |
-| GET | `/api/v1/urls/:code` | Get link (incl. clicks / active) |
-| PATCH | `/api/v1/urls/:code` | Edit destination and/or `isActive` |
+| POST | `/api/v1/urls/shorten` | Create short link (`expiresAt` / `expiresIn` / `maxClicks`) |
+| GET | `/api/v1/urls/:code` | Get link (incl. clicks / active / expiry) |
+| PATCH | `/api/v1/urls/:code` | Edit destination, `isActive`, expiry fields |
 | DELETE | `/api/v1/urls/:code` | Delete link |
-| GET | `/:code` | Redirect (302); increments clicks |
+| GET | `/:code` | Redirect (302); 404/410 HTML or JSON if dead |
 | GET | `/health` | Health |
+
+Expiry inputs (create/update):
+
+- `expiresIn` — `"30m"`, `"12h"`, `"7d"`, `"1w"`, or seconds number
+- `expiresAt` — ISO datetime (or `null` to clear). Not with `expiresIn`
+- `maxClicks` — positive int, or `null` to clear
 
 ## Project layout
 
