@@ -48,3 +48,6 @@ graphify-out/
 
 # TypeScript
 *.tsbuildinfo
+
+# Career Hunt
+career-hunt/

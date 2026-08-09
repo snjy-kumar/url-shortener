@@ -20,6 +20,8 @@ export interface CreateUrlRequest {
 
 export interface UpdateUrlRequest {
   originalUrl?: string;
+  /** Rename short code / custom alias. */
+  customAlias?: string;
   isActive?: boolean;
   expiresAt?: string | null;
   expiresIn?: string | number | null;

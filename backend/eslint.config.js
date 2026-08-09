@@ -57,6 +57,8 @@ export default [
       'node_modules/**',
       'src/generated/**',
       'generated/**',
+      'src/**/*.test.ts',
+      'vitest.config.ts',
       '*.js',
       'eslint.config.js',
     ],

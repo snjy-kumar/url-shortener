@@ -35,6 +35,29 @@ export async function createShortUrl(
   return parseUrlResponse(res);
 }
 
+export async function listShortUrls(
+  limit = 50,
+  offset = 0
+): Promise<{ items: Url[]; total: number }> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/urls?limit=${limit}&offset=${offset}`,
+    { headers: { Accept: "application/json" } }
+  );
+
+  const json = (await res.json()) as ApiResponse<{
+    items: Url[];
+    total: number;
+  }>;
+
+  if (!res.ok || !json.success || !json.data) {
+    const detail =
+      json.errors?.[0]?.message || json.message || "Request failed";
+    throw new Error(detail);
+  }
+
+  return json.data;
+}
+
 export async function getShortUrl(shortCode: string): Promise<Url> {
   const res = await fetch(`${API_BASE}/api/v1/urls/${shortCode}`, {
     headers: { Accept: "application/json" },

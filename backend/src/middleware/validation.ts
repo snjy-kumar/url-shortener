@@ -126,12 +126,23 @@ export const validateUpdateUrl = [
     .isBoolean()
     .withMessage('isActive must be a boolean'),
 
+  body('customAlias')
+    .optional()
+    .isLength({ min: 3, max: 50 })
+    .withMessage('Custom alias must be between 3 and 50 characters')
+    .matches(/^[a-zA-Z0-9_-]+$/)
+    .withMessage(
+      'Custom alias can only contain letters, numbers, hyphens, and underscores'
+    )
+    .customSanitizer((value: string) => value.toLowerCase()),
+
   ...expiryFieldValidators,
 
   body().custom((_, { req }) => {
     const bodyData = req.body as Record<string, unknown>;
     const keys = [
       'originalUrl',
+      'customAlias',
       'isActive',
       'expiresAt',
       'expiresIn',
@@ -139,7 +150,7 @@ export const validateUpdateUrl = [
     ];
     if (!keys.some((key) => bodyData[key] !== undefined)) {
       throw new Error(
-        'Provide originalUrl, isActive, expiresAt, expiresIn, and/or maxClicks'
+        'Provide originalUrl, customAlias, isActive, expiresAt, expiresIn, and/or maxClicks'
       );
     }
     return true;

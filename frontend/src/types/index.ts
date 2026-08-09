@@ -8,6 +8,7 @@ export interface CreateUrlRequest {
 
 export interface UpdateUrlRequest {
   originalUrl?: string;
+  customAlias?: string;
   isActive?: boolean;
   expiresAt?: string | null;
   expiresIn?: string | number | null;

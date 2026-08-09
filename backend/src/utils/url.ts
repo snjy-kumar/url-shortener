@@ -17,6 +17,24 @@ export const RESERVED_SHORT_CODES = new Set([
 export const normalizeShortCode = (code: string): string =>
   code.trim().toLowerCase();
 
+/** Normalize + validate custom alias. Throws AppError via caller using returned checks. */
+export const parseCustomAlias = (
+  alias: string
+): { ok: true; shortCode: string } | { ok: false; message: string } => {
+  const shortCode = normalizeShortCode(alias);
+  if (RESERVED_SHORT_CODES.has(shortCode)) {
+    return { ok: false, message: 'This alias is reserved' };
+  }
+  if (!/^[a-z0-9_-]{3,50}$/.test(shortCode)) {
+    return {
+      ok: false,
+      message:
+        'Custom alias must be 3-50 characters (letters, numbers, - or _)',
+    };
+  }
+  return { ok: true, shortCode };
+};
+
 export const generateShortCode = (): string => {
   let result = '';
   while (result.length < config.SHORT_CODE_LENGTH) {

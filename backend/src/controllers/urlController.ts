@@ -27,6 +27,19 @@ export class UrlController {
     });
   });
 
+  static listUrls = asyncHandler(async (req: Request, res: Response) => {
+    const limit = Number(req.query['limit'] ?? 50);
+    const offset = Number(req.query['offset'] ?? 0);
+    const result = await UrlService.listUrls(
+      Number.isFinite(limit) ? limit : 50,
+      Number.isFinite(offset) ? offset : 0
+    );
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  });
+
   static getShortUrl = asyncHandler(async (req: Request, res: Response) => {
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {

@@ -7,6 +7,7 @@ import {
   isValidUrl,
   normalizeShortCode,
   normalizeUrl,
+  parseCustomAlias,
 } from '../utils/url.js';
 import { isLinkExpired, resolveExpiryPatch } from '../utils/expiry.js';
 import { AppError } from '../utils/errors.js';
@@ -50,21 +51,15 @@ export class UrlService {
     });
 
     if (data.customAlias) {
-      const shortCode = normalizeShortCode(data.customAlias);
-      if (RESERVED_SHORT_CODES.has(shortCode)) {
-        throw new AppError('This alias is reserved', 400);
-      }
-      if (!/^[a-z0-9_-]{3,50}$/.test(shortCode)) {
-        throw new AppError(
-          'Custom alias must be 3-50 characters (letters, numbers, - or _)',
-          400
-        );
+      const parsed = parseCustomAlias(data.customAlias);
+      if (!parsed.ok) {
+        throw new AppError(parsed.message, 400);
       }
 
       try {
         const url = await prisma.url.create({
           data: {
-            shortCode,
+            shortCode: parsed.shortCode,
             originalUrl: normalizedUrl,
             expiresAt: expiry.expiresAt ?? null,
             maxClicks: expiry.maxClicks ?? null,
@@ -110,6 +105,28 @@ export class UrlService {
     return this.format(url);
   }
 
+  static async listUrls(
+    limit = 50,
+    offset = 0
+  ): Promise<{ items: UrlResponse[]; total: number }> {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+
+    const [rows, total] = await Promise.all([
+      prisma.url.findMany({
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      prisma.url.count(),
+    ]);
+
+    return {
+      items: rows.map((row) => this.format(row)),
+      total,
+    };
+  }
+
   static async updateByShortCode(
     shortCode: string,
     data: UpdateUrlRequest
@@ -118,6 +135,7 @@ export class UrlService {
     await this.findOrThrow(code);
 
     const patch: {
+      shortCode?: string;
       originalUrl?: string;
       isActive?: boolean;
       expiresAt?: Date | null;
@@ -130,6 +148,16 @@ export class UrlService {
         throw new AppError('Invalid URL provided', 400);
       }
       patch.originalUrl = normalizedUrl;
+    }
+
+    if (data.customAlias !== undefined) {
+      const parsed = parseCustomAlias(data.customAlias);
+      if (!parsed.ok) {
+        throw new AppError(parsed.message, 400);
+      }
+      if (parsed.shortCode !== code) {
+        patch.shortCode = parsed.shortCode;
+      }
     }
 
     if (data.isActive !== undefined) {
@@ -155,12 +183,18 @@ export class UrlService {
       throw new AppError('No changes provided', 400);
     }
 
-    const url = await prisma.url.update({
-      where: { shortCode: code },
-      data: patch,
-    });
-
-    return this.format(url);
+    try {
+      const url = await prisma.url.update({
+        where: { shortCode: code },
+        data: patch,
+      });
+      return this.format(url);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new AppError('Custom alias already exists', 409);
+      }
+      throw error;
+    }
   }
 
   static async deleteByShortCode(shortCode: string): Promise<void> {

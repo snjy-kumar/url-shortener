@@ -1,12 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, startTransition, useEffect, useState } from "react";
 import {
   createShortUrl,
   deleteShortUrl,
   getShortUrl,
+  listShortUrls,
   updateShortUrl,
 } from "@/lib/api";
+import {
+  forgetCode,
+  readRecentCodes,
+  rememberCode,
+  renameRememberedCode,
+} from "@/lib/recent";
 import type { Url } from "@/types";
 
 type ExpiryPreset = "never" | "1h" | "24h" | "7d" | "30d" | "custom";
@@ -42,6 +49,12 @@ function formatExpirySummary(url: Url): string {
   return parts.join(" · ");
 }
 
+function statusLabel(url: Url): string {
+  if (!url.isActive) return "disabled";
+  if (url.isExpired) return "expired";
+  return "active";
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [alias, setAlias] = useState("");
@@ -50,14 +63,79 @@ export default function Home() {
   const [maxClicks, setMaxClicks] = useState("");
   const [managed, setManaged] = useState<Url | null>(null);
   const [editUrl, setEditUrl] = useState("");
+  const [editAlias, setEditAlias] = useState("");
   const [editExpiryPreset, setEditExpiryPreset] =
     useState<ExpiryPreset>("never");
   const [editCustomExpiresAt, setEditCustomExpiresAt] = useState("");
   const [editMaxClicks, setEditMaxClicks] = useState("");
+  const [lookupCode, setLookupCode] = useState("");
+  const [recent, setRecent] = useState<Url[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const syncManaged = (data: Url) => {
+    setManaged(data);
+    setEditUrl(data.originalUrl);
+    setEditAlias(data.shortCode);
+    setEditMaxClicks(data.maxClicks !== null ? String(data.maxClicks) : "");
+    if (data.expiresAt) {
+      setEditExpiryPreset("custom");
+      setEditCustomExpiresAt(toDatetimeLocalValue(data.expiresAt));
+    } else {
+      setEditExpiryPreset("never");
+      setEditCustomExpiresAt("");
+    }
+    rememberCode(data.shortCode);
+  };
+
+  const refreshRecent = async () => {
+    const codes = readRecentCodes();
+    if (codes.length === 0) {
+      startTransition(() => setRecent([]));
+      return;
+    }
+
+    const results = await Promise.all(
+      codes.map(async (code) => {
+        try {
+          return await getShortUrl(code);
+        } catch {
+          forgetCode(code);
+          return null;
+        }
+      })
+    );
+    startTransition(() => {
+      setRecent(results.filter((item): item is Url => item !== null));
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const codes = readRecentCodes();
+      if (codes.length === 0 || cancelled) return;
+      const results = await Promise.all(
+        codes.map(async (code) => {
+          try {
+            return await getShortUrl(code);
+          } catch {
+            forgetCode(code);
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      startTransition(() => {
+        setRecent(results.filter((item): item is Url => item !== null));
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const buildExpiryPayload = (
     preset: ExpiryPreset,
@@ -99,18 +177,6 @@ export default function Home() {
     return payload;
   };
 
-  const syncEditExpiryFromUrl = (data: Url) => {
-    setEditUrl(data.originalUrl);
-    setEditMaxClicks(data.maxClicks !== null ? String(data.maxClicks) : "");
-    if (data.expiresAt) {
-      setEditExpiryPreset("custom");
-      setEditCustomExpiresAt(toDatetimeLocalValue(data.expiresAt));
-    } else {
-      setEditExpiryPreset("never");
-      setEditCustomExpiresAt("");
-    }
-  };
-
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -128,12 +194,63 @@ export default function Home() {
         customAlias: alias.trim() || undefined,
         ...expiry,
       });
-      setManaged(data);
-      syncEditExpiryFromUrl(data);
+      syncManaged(data);
+      await refreshRecent();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onLookup = async (e: FormEvent) => {
+    e.preventDefault();
+    const code = lookupCode.trim();
+    if (!code) return;
+    setError(null);
+    setCopied(false);
+    setBusy(true);
+    try {
+      const data = await getShortUrl(code);
+      syncManaged(data);
+      setLookupCode("");
+      await refreshRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openRecent = async (code: string) => {
+    setError(null);
+    setCopied(false);
+    setBusy(true);
+    try {
+      const data = await getShortUrl(code);
+      syncManaged(data);
+    } catch (err) {
+      forgetCode(code);
+      await refreshRecent();
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncFromServerList = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { items } = await listShortUrls(30, 0);
+      for (const item of items) {
+        rememberCode(item.shortCode);
+      }
+      await refreshRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -162,8 +279,24 @@ export default function Home() {
       const data = await updateShortUrl(managed.shortCode, {
         originalUrl: editUrl.trim(),
       });
-      setManaged(data);
-      syncEditExpiryFromUrl(data);
+      syncManaged(data);
+      await refreshRecent();
+    });
+
+  const saveAlias = () =>
+    run(async () => {
+      if (!managed) return;
+      const nextAlias = editAlias.trim();
+      if (!nextAlias) {
+        throw new Error("Alias cannot be empty");
+      }
+      const prev = managed.shortCode;
+      const data = await updateShortUrl(prev, {
+        customAlias: nextAlias,
+      });
+      renameRememberedCode(prev, data.shortCode);
+      syncManaged(data);
+      await refreshRecent();
     });
 
   const saveExpiry = () =>
@@ -175,8 +308,8 @@ export default function Home() {
         editMaxClicks
       );
       const data = await updateShortUrl(managed.shortCode, expiry);
-      setManaged(data);
-      syncEditExpiryFromUrl(data);
+      syncManaged(data);
+      await refreshRecent();
     });
 
   const toggleActive = () =>
@@ -185,27 +318,31 @@ export default function Home() {
       const data = await updateShortUrl(managed.shortCode, {
         isActive: !managed.isActive,
       });
-      setManaged(data);
-      syncEditExpiryFromUrl(data);
+      syncManaged(data);
+      await refreshRecent();
     });
 
   const refreshClicks = () =>
     run(async () => {
       if (!managed) return;
       const data = await getShortUrl(managed.shortCode);
-      setManaged(data);
-      syncEditExpiryFromUrl(data);
+      syncManaged(data);
+      await refreshRecent();
     });
 
   const remove = () =>
     run(async () => {
       if (!managed) return;
-      await deleteShortUrl(managed.shortCode);
+      const code = managed.shortCode;
+      await deleteShortUrl(code);
+      forgetCode(code);
       setManaged(null);
       setEditUrl("");
+      setEditAlias("");
       setEditExpiryPreset("never");
       setEditCustomExpiresAt("");
       setEditMaxClicks("");
+      await refreshRecent();
     });
 
   const expiryFields = (
@@ -288,7 +425,25 @@ export default function Home() {
         Paste a long URL. Get a short one.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-10 space-y-4">
+      <form onSubmit={onLookup} className="mt-8 flex gap-2">
+        <input
+          id="lookup"
+          type="text"
+          value={lookupCode}
+          onChange={(e) => setLookupCode(e.target.value)}
+          placeholder="Load by short code"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
+        />
+        <button
+          type="submit"
+          disabled={busy || !lookupCode.trim()}
+          className="shrink-0 rounded-lg border border-line px-4 py-3 text-sm text-ink hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Load
+        </button>
+      </form>
+
+      <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <div>
           <label htmlFor="url" className="mb-1.5 block text-sm text-muted">
             Long URL
@@ -343,6 +498,41 @@ export default function Home() {
         </p>
       )}
 
+      {recent.length > 0 && (
+        <section className="mt-8">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm text-muted">Recent links</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={syncFromServerList}
+              className="text-sm text-sea underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Sync from server
+            </button>
+          </div>
+          <ul className="divide-y divide-line rounded-lg border border-line bg-white">
+            {recent.map((item) => (
+              <li key={item.shortCode}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => openRecent(item.shortCode)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-paper disabled:opacity-50"
+                >
+                  <span className="min-w-0 truncate font-medium text-sea">
+                    {item.shortCode}
+                  </span>
+                  <span className="shrink-0 text-sm text-muted">
+                    {statusLabel(item)} · {item.clickCount} clicks
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {managed && (
         <div className="mt-6 space-y-4 rounded-lg border border-line bg-white p-4">
           <div>
@@ -366,19 +556,43 @@ export default function Home() {
             </div>
             <p className="mt-2 text-sm text-muted">
               Status:{" "}
-              <span className="text-ink">
-                {!managed.isActive
-                  ? "disabled"
-                  : managed.isExpired
-                    ? "expired"
-                    : "active"}
-              </span>
+              <span className="text-ink">{statusLabel(managed)}</span>
               {" · "}
               Clicks: <span className="text-ink">{managed.clickCount}</span>
               {" · "}
               Expiry:{" "}
               <span className="text-ink">{formatExpirySummary(managed)}</span>
             </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-alias"
+              className="mb-1.5 block text-sm text-muted"
+            >
+              Alias
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="edit-alias"
+                type="text"
+                value={editAlias}
+                onChange={(e) => setEditAlias(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
+              />
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !editAlias.trim() ||
+                  editAlias.trim().toLowerCase() === managed.shortCode
+                }
+                onClick={saveAlias}
+                className="shrink-0 rounded-md bg-sea px-3 py-1.5 text-sm font-medium text-white hover:bg-sea-dark disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Rename
+              </button>
+            </div>
           </div>
 
           <div>
