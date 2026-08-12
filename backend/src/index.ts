@@ -10,6 +10,7 @@ import { config } from './config/env.js';
 import { prisma } from './config/database.js';
 import { logger } from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
+import { initRedirectCache } from './utils/redirectCache.js';
 import { asyncHandler } from './utils/asyncHandler.js';
 import {
   errorHandler,
@@ -143,6 +144,7 @@ let server: ReturnType<typeof app.listen> | null = null;
 const startServer = async () => {
   await prisma.$connect();
   logger.info('Database connected');
+  await initRedirectCache();
 
   server = app.listen(config.PORT, () => {
     logger.info(`Server listening on port ${config.PORT}`);

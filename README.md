@@ -29,6 +29,10 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 - **Thin redirect path:** `GET /:code` skips Clerk, body parsers, compression, and the global API rate limit. Dedicated redirect limiter only. No Redis — Postgres-only hot path.
 - **Monitoring:** `/health` includes redirect counters + latency percentiles + 429 count (in-process). Full snapshot also on `GET /api/v1/admin/metrics`.
 - **Admin:** set `ADMIN_CLERK_USER_IDS` (comma-separated Clerk user ids) for takedown + metrics UI.
+- **Cache:** in-memory LRU by default; set `REDIS_URL` for Redis. Skips cache when `max_clicks` set (keeps atomic limit).
+- **Analytics:** append-only `click_events` (referrer / UA / hashed IP); dashboard shows recent clicks.
+- **Claim:** anonymous create returns one-time `claimToken` (stored hashed); `POST /urls/:code/claim` attaches owner.
+- **CAPTCHA:** Cloudflare Turnstile on guest create when `TURNSTILE_SECRET_KEY` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` set.
 
 ## Run locally
 
@@ -116,11 +120,14 @@ Code path: `POST /api/v1/webhooks/clerk` (Svix verify → purge owned URLs).
 |--------|------|------|---------|
 | POST | `/api/v1/urls/shorten` | Optional | Create short link (`expiresAt` / `expiresIn` / `maxClicks`) |
 | GET | `/api/v1/urls/` | Required | List owned links |
+| POST | `/api/v1/urls/:code/claim` | Required | Claim anonymous link with `claimToken` |
+| GET | `/api/v1/urls/:code/analytics` | Required | Recent click events for owned link |
 | GET | `/api/v1/urls/:code` | Required | Get owned link |
 | PATCH | `/api/v1/urls/:code` | Required | Edit owned link |
 | DELETE | `/api/v1/urls/:code` | Required | Delete owned link |
 | GET | `/api/v1/admin/me` | Required | `{ isAdmin }` for UI nav |
 | GET | `/api/v1/admin/metrics` | Admin | Process metrics snapshot |
+| GET | `/api/v1/admin/audit` | Admin | Admin action audit log |
 | GET | `/api/v1/admin/urls/:code` | Admin | Lookup any link (incl. owner) |
 | POST | `/api/v1/admin/urls/:code/disable` | Admin | Force-disable (takedown) |
 | POST | `/api/v1/webhooks/clerk` | Svix | Clerk lifecycle (e.g. purge on delete) |

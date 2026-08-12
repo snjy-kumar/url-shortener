@@ -14,6 +14,7 @@ router.get('/me', AdminController.me);
 
 router.use(requireAdmin);
 router.get('/metrics', AdminController.metrics);
+router.get('/audit', AdminController.audit);
 router.get('/urls/:shortCode', AdminController.getUrl);
 router.post('/urls/:shortCode/disable', AdminController.disableUrl);
 

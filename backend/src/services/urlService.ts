@@ -12,6 +12,13 @@ import {
 import { isLinkExpired, resolveExpiryPatch } from '../utils/expiry.js';
 import { AppError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import {
+  claimTokensMatch,
+  generateClaimToken,
+  hashClaimToken,
+  hashIp,
+} from '../utils/claim.js';
+import { redirectCache } from '../utils/redirectCache.js';
 import type { DeadLinkReason } from '../utils/deadLinkPage.js';
 import {
   CreateUrlRequest,
@@ -24,6 +31,7 @@ type UrlRow = {
   shortCode: string;
   originalUrl: string;
   clerkUserId: string | null;
+  claimTokenHash?: string | null;
   isActive: boolean;
   clickCount: number;
   expiresAt: Date | null;
@@ -33,8 +41,14 @@ type UrlRow = {
 };
 
 export type RedirectResult =
-  | { ok: true; originalUrl: string }
+  | { ok: true; originalUrl: string; urlId: number }
   | { ok: false; reason: DeadLinkReason };
+
+export type ClickMeta = {
+  referrer?: string;
+  userAgent?: string;
+  ip?: string;
+};
 
 const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -43,7 +57,7 @@ export class UrlService {
   static async createShortUrl(
     data: CreateUrlRequest,
     clerkUserId: string | null
-  ): Promise<UrlResponse> {
+  ): Promise<UrlResponse & { claimToken?: string }> {
     const normalizedUrl = normalizeUrl(data.originalUrl);
     if (!isValidUrl(normalizedUrl)) {
       throw new AppError('Invalid URL provided', 400);
@@ -55,6 +69,17 @@ export class UrlService {
       maxClicks: data.maxClicks,
     });
 
+    const claimToken = clerkUserId ? null : generateClaimToken();
+    const claimTokenHash = claimToken ? hashClaimToken(claimToken) : null;
+
+    const createData = {
+      originalUrl: normalizedUrl,
+      clerkUserId,
+      claimTokenHash,
+      expiresAt: expiry.expiresAt ?? null,
+      maxClicks: expiry.maxClicks ?? null,
+    };
+
     if (data.customAlias) {
       const parsed = parseCustomAlias(data.customAlias);
       if (!parsed.ok) {
@@ -65,13 +90,10 @@ export class UrlService {
         const url = await prisma.url.create({
           data: {
             shortCode: parsed.shortCode,
-            originalUrl: normalizedUrl,
-            clerkUserId,
-            expiresAt: expiry.expiresAt ?? null,
-            maxClicks: expiry.maxClicks ?? null,
+            ...createData,
           },
         });
-        return this.format(url);
+        return this.formatWithClaim(url, claimToken);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new AppError('Custom alias already exists', 409);
@@ -89,13 +111,10 @@ export class UrlService {
         const url = await prisma.url.create({
           data: {
             shortCode,
-            originalUrl: normalizedUrl,
-            clerkUserId,
-            expiresAt: expiry.expiresAt ?? null,
-            maxClicks: expiry.maxClicks ?? null,
+            ...createData,
           },
         });
-        return this.format(url);
+        return this.formatWithClaim(url, claimToken);
       } catch (error) {
         if (isUniqueViolation(error)) {
           continue;
@@ -105,6 +124,34 @@ export class UrlService {
     }
 
     throw new AppError('Unable to generate unique short code', 500);
+  }
+
+  static async claimShortUrl(
+    shortCode: string,
+    claimToken: string,
+    clerkUserId: string
+  ): Promise<UrlResponse> {
+    const code = normalizeShortCode(shortCode);
+    const url = await prisma.url.findUnique({ where: { shortCode: code } });
+    if (!url) {
+      throw new AppError('URL not found', 404);
+    }
+    if (url.clerkUserId) {
+      throw new AppError('Link already has an owner', 409);
+    }
+    if (!claimTokensMatch(claimToken, url.claimTokenHash)) {
+      throw new AppError('Invalid claim token', 403);
+    }
+
+    const updated = await prisma.url.update({
+      where: { shortCode: code },
+      data: {
+        clerkUserId,
+        claimTokenHash: null,
+      },
+    });
+    await redirectCache.invalidate(code);
+    return this.format(updated);
   }
 
   static async getByShortCode(
@@ -137,6 +184,46 @@ export class UrlService {
     return {
       items: rows.map((row) => this.format(row)),
       total,
+    };
+  }
+
+  static async getClickAnalytics(
+    shortCode: string,
+    clerkUserId: string,
+    limit = 50
+  ): Promise<{
+    shortCode: string;
+    totalClicks: number;
+    recent: Array<{
+      id: string;
+      createdAt: string;
+      referrer: string | null;
+      userAgent: string | null;
+    }>;
+  }> {
+    const url = await this.findOwnedOrThrow(shortCode, clerkUserId);
+    const take = Math.min(Math.max(limit, 1), 200);
+    const recent = await prisma.clickEvent.findMany({
+      where: { urlId: url.id },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        createdAt: true,
+        referrer: true,
+        userAgent: true,
+      },
+    });
+
+    return {
+      shortCode: url.shortCode,
+      totalClicks: url.clickCount,
+      recent: recent.map((row) => ({
+        id: row.id.toString(),
+        createdAt: row.createdAt.toISOString(),
+        referrer: row.referrer,
+        userAgent: row.userAgent,
+      })),
     };
   }
 
@@ -202,6 +289,10 @@ export class UrlService {
         where: { shortCode: code },
         data: patch,
       });
+      await redirectCache.invalidate(code);
+      if (patch.shortCode && patch.shortCode !== code) {
+        await redirectCache.invalidate(patch.shortCode);
+      }
       return this.format(url);
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -218,15 +309,19 @@ export class UrlService {
     const code = normalizeShortCode(shortCode);
     await this.findOwnedOrThrow(code, clerkUserId);
     await prisma.url.delete({ where: { shortCode: code } });
+    await redirectCache.invalidate(code);
   }
 
-  /** Purge all links owned by a Clerk user (e.g. user.deleted webhook). */
   static async deleteAllForClerkUser(clerkUserId: string): Promise<number> {
+    const rows = await prisma.url.findMany({
+      where: { clerkUserId },
+      select: { shortCode: true },
+    });
     const result = await prisma.url.deleteMany({ where: { clerkUserId } });
+    await Promise.all(rows.map((r) => redirectCache.invalidate(r.shortCode)));
     return result.count;
   }
 
-  /** Admin: lookup any link by code (includes owner id). */
   static async adminGetByShortCode(shortCode: string): Promise<
     UrlResponse & { clerkUserId: string | null }
   > {
@@ -241,7 +336,6 @@ export class UrlService {
     };
   }
 
-  /** Admin: force-disable any link (takedown). */
   static async adminDisableByShortCode(
     shortCode: string,
     adminUserId: string
@@ -256,8 +350,20 @@ export class UrlService {
       where: { shortCode: code },
       data: { isActive: false },
     });
+    await redirectCache.invalidate(code);
 
-    // Structured audit trail in logs (no separate audit table yet).
+    await prisma.adminAuditLog.create({
+      data: {
+        adminUserId,
+        action: 'disable',
+        shortCode: code,
+        meta: {
+          previousOwner: existing.clerkUserId,
+          previousActive: existing.isActive,
+        },
+      },
+    });
+
     logger.warn('Admin disabled short URL', {
       shortCode: code,
       adminUserId,
@@ -270,12 +376,56 @@ export class UrlService {
     };
   }
 
-  static async resolveRedirect(shortCode: string): Promise<RedirectResult> {
+  static async adminListAudit(limit = 50): Promise<
+    Array<{
+      id: number;
+      adminUserId: string;
+      action: string;
+      shortCode: string;
+      meta: unknown;
+      createdAt: string;
+    }>
+  > {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const rows = await prisma.adminAuditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      adminUserId: row.adminUserId,
+      action: row.action,
+      shortCode: row.shortCode,
+      meta: row.meta,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  static async resolveRedirect(
+    shortCode: string,
+    meta?: ClickMeta
+  ): Promise<RedirectResult> {
     const code = normalizeShortCode(shortCode);
 
-    // Hot path: increment click_count only (no updated_at) so Postgres can HOT-update.
+    // Cache fast-path only when max_clicks is unset (atomic limit still needs DB).
+    const cached = await redirectCache.get(code);
+    if (
+      cached &&
+      cached.maxClicks === null &&
+      cached.isActive &&
+      (!cached.expiresAt || new Date(cached.expiresAt) > new Date())
+    ) {
+      void this.bumpClickOnly(code, cached.id, meta);
+      return { ok: true, originalUrl: cached.originalUrl, urlId: cached.id };
+    }
+
     const rows = await prisma.$queryRaw<
-      Array<{ id: number; original_url: string }>
+      Array<{
+        id: number;
+        original_url: string;
+        expires_at: Date | null;
+        max_clicks: number | null;
+      }>
     >`
       UPDATE urls
       SET click_count = click_count + 1
@@ -283,15 +433,64 @@ export class UrlService {
         AND is_active = true
         AND (expires_at IS NULL OR expires_at > NOW())
         AND (max_clicks IS NULL OR click_count < max_clicks)
-      RETURNING id, original_url
+      RETURNING id, original_url, expires_at, max_clicks
     `;
 
     const hit = rows[0];
     if (hit) {
-      return { ok: true, originalUrl: hit.original_url };
+      void this.recordClickEvent(hit.id, code, meta);
+      void redirectCache.set(code, {
+        id: hit.id,
+        originalUrl: hit.original_url,
+        isActive: true,
+        expiresAt: hit.expires_at ? hit.expires_at.toISOString() : null,
+        maxClicks: hit.max_clicks,
+      });
+      return { ok: true, originalUrl: hit.original_url, urlId: hit.id };
     }
 
     return this.explainRedirectFailure(code);
+  }
+
+  private static async bumpClickOnly(
+    shortCode: string,
+    urlId: number,
+    meta?: ClickMeta
+  ): Promise<void> {
+    try {
+      await prisma.$executeRaw`
+        UPDATE urls SET click_count = click_count + 1 WHERE short_code = ${shortCode}
+      `;
+      await this.recordClickEvent(urlId, shortCode, meta);
+    } catch (error) {
+      logger.warn('Async click bump failed', {
+        shortCode,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  private static async recordClickEvent(
+    urlId: number,
+    shortCode: string,
+    meta?: ClickMeta
+  ): Promise<void> {
+    try {
+      await prisma.clickEvent.create({
+        data: {
+          urlId,
+          shortCode,
+          referrer: meta?.referrer?.slice(0, 2048) || null,
+          userAgent: meta?.userAgent?.slice(0, 512) || null,
+          ipHash: hashIp(meta?.ip),
+        },
+      });
+    } catch (error) {
+      logger.warn('Click event insert failed', {
+        shortCode,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
   }
 
   private static async explainRedirectFailure(
@@ -302,12 +501,18 @@ export class UrlService {
       return { ok: false, reason: 'not_found' };
     }
     if (!url.isActive) {
+      await redirectCache.set(shortCode, {
+        id: url.id,
+        originalUrl: url.originalUrl,
+        isActive: false,
+        expiresAt: url.expiresAt ? url.expiresAt.toISOString() : null,
+        maxClicks: url.maxClicks,
+      });
       return { ok: false, reason: 'disabled' };
     }
     if (isLinkExpired(url)) {
       return { ok: false, reason: 'expired' };
     }
-    // Lost race on last click / concurrent disable
     return { ok: false, reason: 'expired' };
   }
 
@@ -323,6 +528,17 @@ export class UrlService {
       throw new AppError('URL not found', 404);
     }
     return url;
+  }
+
+  private static formatWithClaim(
+    url: UrlRow,
+    claimToken: string | null
+  ): UrlResponse & { claimToken?: string } {
+    const base = this.format(url);
+    if (claimToken) {
+      return { ...base, claimToken };
+    }
+    return base;
   }
 
   private static format(url: UrlRow): UrlResponse {

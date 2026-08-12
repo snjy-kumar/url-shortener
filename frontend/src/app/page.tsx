@@ -1,15 +1,40 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useAuth } from "@clerk/nextjs";
-import { createShortUrl } from "@/lib/api";
+import { claimShortUrl, createShortUrl } from "@/lib/api";
 import {
   buildExpiryPayload,
   type ExpiryPreset,
 } from "@/lib/expiry";
+import {
+  clearClaimToken,
+  listPendingClaims,
+  saveClaimToken,
+} from "@/lib/claims";
 import { SiteHeader } from "@/components/SiteHeader";
 import type { Url } from "@/types";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        el: HTMLElement,
+        opts: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback"?: () => void;
+        }
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
+}
+
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export default function Home() {
   const { getToken, isSignedIn, isLoaded } = useAuth();
@@ -22,6 +47,34 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [result, setResult] = useState<Url | null>(null);
+  const [pendingClaims, setPendingClaims] = useState(listPendingClaims());
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const widgetId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || !turnstileRef.current || !window.turnstile) {
+      return;
+    }
+    if (widgetId.current) return;
+    widgetId.current = window.turnstile.render(turnstileRef.current, {
+      sitekey: TURNSTILE_SITE_KEY,
+      callback: (token) => setTurnstileToken(token),
+      "expired-callback": () => setTurnstileToken(null),
+    });
+  }, []);
+
+  const onTurnstileLoad = () => {
+    if (!TURNSTILE_SITE_KEY || !turnstileRef.current || !window.turnstile) {
+      return;
+    }
+    if (widgetId.current) return;
+    widgetId.current = window.turnstile.render(turnstileRef.current, {
+      sitekey: TURNSTILE_SITE_KEY,
+      callback: (token) => setTurnstileToken(token),
+      "expired-callback": () => setTurnstileToken(null),
+    });
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -30,6 +83,9 @@ export default function Home() {
     setCopied(false);
     setLoading(true);
     try {
+      if (!isSignedIn && TURNSTILE_SITE_KEY && !turnstileToken) {
+        throw new Error("Complete the CAPTCHA first");
+      }
       const expiry = buildExpiryPayload(
         expiryPreset,
         customExpiresAt,
@@ -38,11 +94,35 @@ export default function Home() {
       const data = await createShortUrl(isSignedIn ? getToken : undefined, {
         originalUrl: url.trim(),
         customAlias: alias.trim() || undefined,
+        turnstileToken: turnstileToken || undefined,
         ...expiry,
       });
+      if (data.claimToken) {
+        saveClaimToken(data.shortCode, data.claimToken);
+        setPendingClaims(listPendingClaims());
+      }
       setResult(data);
+      if (widgetId.current && window.turnstile) {
+        window.turnstile.reset(widgetId.current);
+        setTurnstileToken(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const claimPending = async (shortCode: string, claimToken: string) => {
+    if (!isSignedIn) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await claimShortUrl(getToken, shortCode, claimToken);
+      clearClaimToken(shortCode);
+      setPendingClaims(listPendingClaims());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Claim failed");
     } finally {
       setLoading(false);
     }
@@ -57,6 +137,13 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-6 py-16">
+      {TURNSTILE_SITE_KEY && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          onLoad={onTurnstileLoad}
+        />
+      )}
       <SiteHeader />
       <p className="mt-3 max-w-md text-lg text-muted">
         Paste a long URL. Get a short one. Sign in to manage links on the
@@ -67,6 +154,32 @@ export default function Home() {
         <p className="mt-8 text-sm text-muted">Loading…</p>
       ) : (
         <>
+          {isSignedIn && pendingClaims.length > 0 && (
+            <section className="mt-8 rounded-lg border border-line bg-white p-4">
+              <p className="mb-2 text-sm text-muted">Claim guest links</p>
+              <ul className="space-y-2">
+                {pendingClaims.map((item) => (
+                  <li
+                    key={item.shortCode}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <span className="font-medium text-sea">{item.shortCode}</span>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() =>
+                        claimPending(item.shortCode, item.claimToken)
+                      }
+                      className="rounded-md bg-sea px-3 py-1.5 text-sm font-medium text-white hover:bg-sea-dark disabled:opacity-50"
+                    >
+                      Claim
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             <div>
               <label htmlFor="url" className="mb-1.5 block text-sm text-muted">
@@ -123,42 +236,28 @@ export default function Home() {
               </div>
 
               {expiryPreset === "custom" && (
-                <div>
-                  <label
-                    htmlFor="create-custom-at"
-                    className="mb-1.5 block text-sm text-muted"
-                  >
-                    Exact expiry
-                  </label>
-                  <input
-                    id="create-custom-at"
-                    type="datetime-local"
-                    value={customExpiresAt}
-                    onChange={(e) => setCustomExpiresAt(e.target.value)}
-                    className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label
-                  htmlFor="create-max-clicks"
-                  className="mb-1.5 block text-sm text-muted"
-                >
-                  Max clicks <span className="opacity-70">(optional)</span>
-                </label>
                 <input
-                  id="create-max-clicks"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={maxClicks}
-                  onChange={(e) => setMaxClicks(e.target.value)}
-                  placeholder="Unlimited"
+                  type="datetime-local"
+                  value={customExpiresAt}
+                  onChange={(e) => setCustomExpiresAt(e.target.value)}
                   className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
                 />
-              </div>
+              )}
+
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={maxClicks}
+                onChange={(e) => setMaxClicks(e.target.value)}
+                placeholder="Max clicks (optional)"
+                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
+              />
             </div>
+
+            {!isSignedIn && TURNSTILE_SITE_KEY && (
+              <div ref={turnstileRef} className="min-h-[65px]" />
+            )}
 
             <button
               type="submit"
@@ -195,6 +294,12 @@ export default function Home() {
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
+              {result.claimToken && (
+                <p className="text-sm text-muted">
+                  Claim token saved in this browser. Sign in and claim to manage
+                  it.
+                </p>
+              )}
               {isSignedIn ? (
                 <p className="text-sm text-muted">
                   <Link

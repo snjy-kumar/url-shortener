@@ -4,6 +4,7 @@ import { FormEvent, startTransition, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
   deleteShortUrl,
+  fetchUrlAnalytics,
   getShortUrl,
   listShortUrls,
   updateShortUrl,
@@ -37,6 +38,15 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [analytics, setAnalytics] = useState<{
+    totalClicks: number;
+    recent: Array<{
+      id: string;
+      createdAt: string;
+      referrer: string | null;
+      userAgent: string | null;
+    }>;
+  } | null>(null);
 
   const syncManaged = (data: Url) => {
     setManaged(data);
@@ -51,6 +61,14 @@ export default function DashboardPage() {
       setEditCustomExpiresAt("");
     }
     rememberCode(data.shortCode);
+    void (async () => {
+      try {
+        const a = await fetchUrlAnalytics(getToken, data.shortCode, 20);
+        setAnalytics({ totalClicks: a.totalClicks, recent: a.recent });
+      } catch {
+        setAnalytics(null);
+      }
+    })();
   };
 
   const refreshRecent = async () => {
@@ -422,6 +440,7 @@ export default function DashboardPage() {
                       await deleteShortUrl(getToken, code);
                       forgetCode(code);
                       setManaged(null);
+                      setAnalytics(null);
                       await refreshRecent();
                     })
                   }
@@ -430,6 +449,29 @@ export default function DashboardPage() {
                   Delete
                 </button>
               </div>
+
+              {analytics && (
+                <div className="border-t border-line pt-4">
+                  <p className="mb-2 text-sm text-muted">
+                    Recent clicks ({analytics.totalClicks} total)
+                  </p>
+                  {analytics.recent.length === 0 ? (
+                    <p className="text-sm text-muted">No click events yet.</p>
+                  ) : (
+                    <ul className="max-h-48 space-y-2 overflow-y-auto text-sm">
+                      {analytics.recent.map((ev) => (
+                        <li key={ev.id} className="text-muted">
+                          <span className="text-ink">
+                            {new Date(ev.createdAt).toLocaleString()}
+                          </span>
+                          {" · "}
+                          {ev.referrer || "(no referrer)"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </>

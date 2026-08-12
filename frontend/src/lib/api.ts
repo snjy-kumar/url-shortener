@@ -157,7 +157,89 @@ export type AdminMetrics = {
     p99: number | null;
   };
   services: { database: string };
+  redirectCache?: string;
 };
+
+export async function claimShortUrl(
+  getToken: GetToken,
+  shortCode: string,
+  claimToken: string
+): Promise<Url> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/${shortCode}/claim`, {
+    method: "POST",
+    headers: await authHeaders(getToken, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ claimToken }),
+  });
+  return parseUrlResponse(res);
+}
+
+export async function fetchUrlAnalytics(
+  getToken: GetToken,
+  shortCode: string,
+  limit = 50
+): Promise<{
+  shortCode: string;
+  totalClicks: number;
+  recent: Array<{
+    id: string;
+    createdAt: string;
+    referrer: string | null;
+    userAgent: string | null;
+  }>;
+}> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/urls/${shortCode}/analytics?limit=${limit}`,
+    { headers: await authHeaders(getToken) }
+  );
+  const json = (await res.json()) as ApiResponse<{
+    shortCode: string;
+    totalClicks: number;
+    recent: Array<{
+      id: string;
+      createdAt: string;
+      referrer: string | null;
+      userAgent: string | null;
+    }>;
+  }>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Analytics failed");
+  }
+  return json.data;
+}
+
+export async function fetchAdminAudit(
+  getToken: GetToken,
+  limit = 50
+): Promise<
+  Array<{
+    id: number;
+    adminUserId: string;
+    action: string;
+    shortCode: string;
+    meta: unknown;
+    createdAt: string;
+  }>
+> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/audit?limit=${limit}`, {
+    headers: await authHeaders(getToken),
+  });
+  const json = (await res.json()) as ApiResponse<
+    Array<{
+      id: number;
+      adminUserId: string;
+      action: string;
+      shortCode: string;
+      meta: unknown;
+      createdAt: string;
+    }>
+  >;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Audit failed");
+  }
+  return json.data;
+}
 
 export async function fetchAdminMe(
   getToken: GetToken

@@ -8,17 +8,51 @@ datasource db {
 }
 
 model Url {
-  id          Int       @id @default(autoincrement())
-  shortCode   String    @unique @map("short_code")
-  originalUrl String    @map("original_url")
+  id             Int       @id @default(autoincrement())
+  shortCode      String    @unique @map("short_code")
+  originalUrl    String    @map("original_url")
   /// Null = anonymous create. Partial index in migration (WHERE NOT NULL).
-  clerkUserId String?   @map("clerk_user_id")
-  isActive    Boolean   @default(true) @map("is_active")
-  clickCount  Int       @default(0) @map("click_count")
-  expiresAt   DateTime? @map("expires_at")
-  maxClicks   Int?      @map("max_clicks")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  clerkUserId    String?   @map("clerk_user_id")
+  /// SHA-256 of one-time claim token (anonymous creates only).
+  claimTokenHash String?   @map("claim_token_hash")
+  isActive       Boolean   @default(true) @map("is_active")
+  clickCount     Int       @default(0) @map("click_count")
+  expiresAt      DateTime? @map("expires_at")
+  maxClicks      Int?      @map("max_clicks")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  clickEvents ClickEvent[]
 
   @@map("urls")
+}
+
+/// Append-only redirect analytics (never updated on the hot UPDATE row).
+model ClickEvent {
+  id        BigInt   @id @default(autoincrement())
+  urlId     Int      @map("url_id")
+  shortCode String   @map("short_code")
+  referrer  String?  @db.VarChar(2048)
+  userAgent String?  @map("user_agent") @db.VarChar(512)
+  ipHash    String?  @map("ip_hash") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  url Url @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  @@index([shortCode, createdAt])
+  @@index([urlId, createdAt])
+  @@map("click_events")
+}
+
+model AdminAuditLog {
+  id          Int      @id @default(autoincrement())
+  adminUserId String   @map("admin_user_id")
+  action      String
+  shortCode   String   @map("short_code")
+  meta        Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([shortCode])
+  @@map("admin_audit_logs")
 }

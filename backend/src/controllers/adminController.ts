@@ -7,6 +7,7 @@ import { AppError } from '../utils/errors.js';
 import { isAdminUserId } from '../middleware/requireAdmin.js';
 import { metrics } from '../utils/metrics.js';
 import { prisma } from '../config/database.js';
+import { getRedirectCacheMode } from '../utils/redirectCache.js';
 
 export class AdminController {
   static me = asyncHandler(async (req: Request, res: Response) => {
@@ -34,7 +35,19 @@ export class AdminController {
       data: {
         ...metrics.snapshot(),
         services: { database },
+        redirectCache: getRedirectCacheMode(),
       },
+    });
+  });
+
+  static audit = asyncHandler(async (req: Request, res: Response) => {
+    const limit = Number(req.query['limit'] ?? 50);
+    const data = await UrlService.adminListAudit(
+      Number.isFinite(limit) ? limit : 50
+    );
+    res.status(200).json({
+      success: true,
+      data,
     });
   });
 

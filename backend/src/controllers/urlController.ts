@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
 import { getAuth } from '@clerk/express';
 import { UrlService } from '../services/urlService.js';
-import { CreateUrlRequest, UpdateUrlRequest } from '../types/index.js';
+import {
+  ClaimUrlRequest,
+  CreateUrlRequest,
+  UpdateUrlRequest,
+} from '../types/index.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { asStringParam } from '../utils/request.js';
 import { AppError } from '../utils/errors.js';
@@ -10,6 +14,7 @@ import {
   renderDeadLinkPage,
 } from '../utils/deadLinkPage.js';
 import { metrics } from '../utils/metrics.js';
+import { verifyTurnstileIfNeeded } from '../utils/turnstile.js';
 
 const wantsHtml = (req: Request): boolean => {
   const accept = req.get('Accept') || '';
@@ -27,7 +32,6 @@ const requireUserId = (req: Request): string => {
   return auth.userId;
 };
 
-/** Hybrid create: signed-in → owner id; guest → null. */
 const optionalUserId = (req: Request): string | null => {
   const auth = getAuth(req);
   if (auth.isAuthenticated) {
@@ -39,13 +43,38 @@ const optionalUserId = (req: Request): string | null => {
 export class UrlController {
   static createShortUrl = asyncHandler(async (req: Request, res: Response) => {
     const clerkUserId = optionalUserId(req);
-    const urlData = await UrlService.createShortUrl(
-      req.body as CreateUrlRequest,
-      clerkUserId
+    const body = req.body as CreateUrlRequest;
+    await verifyTurnstileIfNeeded(
+      body.turnstileToken,
+      req.ip,
+      clerkUserId === null
     );
+    const urlData = await UrlService.createShortUrl(body, clerkUserId);
     res.status(201).json({
       success: true,
       message: 'Short URL created',
+      data: urlData,
+    });
+  });
+
+  static claimShortUrl = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
+    const shortCode = asStringParam(req.params['shortCode']);
+    if (!shortCode) {
+      throw new AppError('Not found', 404);
+    }
+    const body = req.body as ClaimUrlRequest;
+    if (!body.claimToken || typeof body.claimToken !== 'string') {
+      throw new AppError('claimToken required', 400);
+    }
+    const urlData = await UrlService.claimShortUrl(
+      shortCode,
+      body.claimToken,
+      clerkUserId
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Short URL claimed',
       data: urlData,
     });
   });
@@ -76,6 +105,24 @@ export class UrlController {
     res.status(200).json({
       success: true,
       data: urlData,
+    });
+  });
+
+  static getAnalytics = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
+    const shortCode = asStringParam(req.params['shortCode']);
+    if (!shortCode) {
+      throw new AppError('Not found', 404);
+    }
+    const limit = Number(req.query['limit'] ?? 50);
+    const data = await UrlService.getClickAnalytics(
+      shortCode,
+      clerkUserId,
+      Number.isFinite(limit) ? limit : 50
+    );
+    res.status(200).json({
+      success: true,
+      data,
     });
   });
 
@@ -125,7 +172,11 @@ export class UrlController {
     }
 
     try {
-      const resolved = await UrlService.resolveRedirect(shortCode);
+      const resolved = await UrlService.resolveRedirect(shortCode, {
+        referrer: req.get('referer') || undefined,
+        userAgent: req.get('user-agent') || undefined,
+        ip: req.ip,
+      });
       if (resolved.ok) {
         metrics.recordRedirect(performance.now() - started, 'hit');
         res.redirect(302, resolved.originalUrl);

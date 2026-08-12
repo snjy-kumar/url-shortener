@@ -4,6 +4,7 @@ export interface CreateUrlRequest {
   expiresAt?: string | null;
   expiresIn?: string | number | null;
   maxClicks?: number | null;
+  turnstileToken?: string;
 }
 
 export interface UpdateUrlRequest {
@@ -27,6 +28,7 @@ export interface Url {
   isExpired: boolean;
   createdAt: string;
   updatedAt: string;
+  claimToken?: string;
 }
 
 export interface ApiResponse<T = unknown> {

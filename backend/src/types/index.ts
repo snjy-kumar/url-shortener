@@ -16,6 +16,12 @@ export interface CreateUrlRequest {
   expiresIn?: string | number | null;
   /** Expire after this many successful redirects. */
   maxClicks?: number | null;
+  /** Cloudflare Turnstile token (guest create when captcha configured). */
+  turnstileToken?: string;
+}
+
+export interface ClaimUrlRequest {
+  claimToken: string;
 }
 
 export interface UpdateUrlRequest {
@@ -40,4 +46,6 @@ export interface UrlResponse {
   isExpired: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Present once on anonymous create — store to claim later. */
+  claimToken?: string;
 }

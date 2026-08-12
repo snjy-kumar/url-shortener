@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import {
   adminDisableUrl,
   adminGetUrl,
+  fetchAdminAudit,
   fetchAdminMe,
   fetchAdminMetrics,
   type AdminMetrics,
@@ -19,6 +20,15 @@ export default function AdminPage() {
   const [code, setCode] = useState("");
   const [lookedUp, setLookedUp] = useState<AdminUrl | null>(null);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [audit, setAudit] = useState<
+    Array<{
+      id: number;
+      adminUserId: string;
+      action: string;
+      shortCode: string;
+      createdAt: string;
+    }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -32,8 +42,14 @@ export default function AdminPage() {
         if (cancelled) return;
         setIsAdmin(me.isAdmin);
         if (me.isAdmin) {
-          const m = await fetchAdminMetrics(getToken);
-          if (!cancelled) setMetrics(m);
+          const [m, a] = await Promise.all([
+            fetchAdminMetrics(getToken),
+            fetchAdminAudit(getToken, 20),
+          ]);
+          if (!cancelled) {
+            setMetrics(m);
+            setAudit(a);
+          }
         }
       } catch {
         if (!cancelled) setIsAdmin(false);
@@ -71,8 +87,12 @@ export default function AdminPage() {
       const data = await adminDisableUrl(getToken, lookedUp.shortCode);
       setLookedUp(data);
       setMessage("Link disabled (takedown).");
-      const m = await fetchAdminMetrics(getToken);
+      const [m, a] = await Promise.all([
+        fetchAdminMetrics(getToken),
+        fetchAdminAudit(getToken, 20),
+      ]);
       setMetrics(m);
+      setAudit(a);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Disable failed");
     } finally {
@@ -153,7 +173,30 @@ export default function AdminPage() {
                     {metrics.redirectLatencyMs.p95 ?? "—"} ms
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-muted">Cache</dt>
+                  <dd className="text-ink">
+                    {metrics.redirectCache ?? "memory"}
+                  </dd>
+                </div>
               </dl>
+            </section>
+          )}
+
+          {audit.length > 0 && (
+            <section className="mt-6 rounded-lg border border-line bg-white p-4">
+              <p className="mb-2 text-sm font-medium text-ink">Audit log</p>
+              <ul className="max-h-40 space-y-2 overflow-y-auto text-sm text-muted">
+                {audit.map((row) => (
+                  <li key={row.id}>
+                    <span className="text-ink">
+                      {new Date(row.createdAt).toLocaleString()}
+                    </span>
+                    {" · "}
+                    {row.action} {row.shortCode}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 

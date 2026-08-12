@@ -13,7 +13,6 @@ import {
 
 const router = Router();
 
-// Hybrid create: optional auth; guests get strict IP limit, signed-in get per-user limit.
 router.post(
   '/shorten',
   guestCreateLimiter,
@@ -26,6 +25,8 @@ router.use(requireClerkAuth);
 router.use(authenticatedUserLimiter);
 
 router.get('/', UrlController.listUrls);
+router.post('/:shortCode/claim', UrlController.claimShortUrl);
+router.get('/:shortCode/analytics', UrlController.getAnalytics);
 router.get('/:shortCode', UrlController.getShortUrl);
 router.patch('/:shortCode', validateUpdateUrl, UrlController.updateShortUrl);
 router.delete('/:shortCode', UrlController.deleteShortUrl);

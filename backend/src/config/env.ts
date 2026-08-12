@@ -21,6 +21,10 @@ interface Config {
   CLERK_WEBHOOK_SIGNING_SECRET: string | undefined;
   CLERK_AUTHORIZED_PARTIES: string[];
   ADMIN_CLERK_USER_IDS: string[];
+  REDIS_URL: string | undefined;
+  REDIRECT_CACHE_TTL_SECONDS: number;
+  TURNSTILE_SECRET_KEY: string | undefined;
+  TURNSTILE_REQUIRED_IN_PROD: boolean;
 }
 
 const required = (key: string, fallback?: string): string => {
@@ -95,4 +99,10 @@ export const config: Config = {
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean),
+  REDIS_URL: process.env['REDIS_URL'] || undefined,
+  REDIRECT_CACHE_TTL_SECONDS: number('REDIRECT_CACHE_TTL_SECONDS', 300),
+  TURNSTILE_SECRET_KEY: process.env['TURNSTILE_SECRET_KEY'] || undefined,
+  TURNSTILE_REQUIRED_IN_PROD:
+    (process.env['TURNSTILE_REQUIRED_IN_PROD'] || 'false').toLowerCase() ===
+    'true',
 };

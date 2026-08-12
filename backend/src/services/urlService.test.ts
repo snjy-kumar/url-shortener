@@ -112,7 +112,7 @@ describe('UrlService core flows', () => {
     );
 
     const first = await UrlService.resolveRedirect(created.shortCode);
-    expect(first).toEqual({
+    expect(first).toMatchObject({
       ok: true,
       originalUrl: 'https://example.com/max-clicks',
     });
@@ -197,10 +197,13 @@ describe('UrlService core flows', () => {
       )
     );
 
+    expect(created.claimToken).toBeTruthy();
+
     const row = await prisma.url.findUnique({
       where: { shortCode: created.shortCode },
     });
     expect(row?.clerkUserId).toBeNull();
+    expect(row?.claimTokenHash).toBeTruthy();
 
     const listed = await UrlService.listUrls(TEST_USER, 100, 0);
     expect(
@@ -219,6 +222,8 @@ describe('UrlService core flows', () => {
         TEST_USER
       )
     );
+
+    expect(created.claimToken).toBeUndefined();
 
     const row = await prisma.url.findUnique({
       where: { shortCode: created.shortCode },
@@ -272,6 +277,42 @@ describe('UrlService core flows', () => {
     ).rejects.toBeInstanceOf(AppError);
   });
 
+  it('claims anonymous link with valid token', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const created = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/claim-me',
+          customAlias: `t-claim-${suffix}`,
+        },
+        null
+      )
+    );
+    expect(created.claimToken).toBeTruthy();
+
+    await expect(
+      UrlService.claimShortUrl(created.shortCode, 'bad-token', TEST_USER)
+    ).rejects.toBeInstanceOf(AppError);
+
+    const claimed = await UrlService.claimShortUrl(
+      created.shortCode,
+      created.claimToken!,
+      TEST_USER
+    );
+    expect(claimed.shortCode).toBe(created.shortCode);
+
+    const listed = await UrlService.listUrls(TEST_USER, 100, 0);
+    expect(
+      listed.items.some((item) => item.shortCode === created.shortCode)
+    ).toBe(true);
+
+    const row = await prisma.url.findUnique({
+      where: { shortCode: created.shortCode },
+    });
+    expect(row?.clerkUserId).toBe(TEST_USER);
+    expect(row?.claimTokenHash).toBeNull();
+  });
+
   it('admin can look up and disable any link', async () => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const created = track(
@@ -294,7 +335,39 @@ describe('UrlService core flows', () => {
     );
     expect(disabled.isActive).toBe(false);
 
+    const audit = await UrlService.adminListAudit(10);
+    expect(audit.some((a) => a.shortCode === created.shortCode)).toBe(true);
+
     const redirect = await UrlService.resolveRedirect(created.shortCode);
     expect(redirect).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  it('records click events on redirect', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const created = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/analytics',
+          customAlias: `t-click-${suffix}`,
+        },
+        TEST_USER
+      )
+    );
+
+    await UrlService.resolveRedirect(created.shortCode, {
+      referrer: 'https://ref.example',
+      userAgent: 'vitest',
+      ip: '203.0.113.10',
+    });
+    // allow fire-and-forget inserts
+    await new Promise((r) => setTimeout(r, 50));
+
+    const analytics = await UrlService.getClickAnalytics(
+      created.shortCode,
+      TEST_USER,
+      10
+    );
+    expect(analytics.totalClicks).toBeGreaterThanOrEqual(1);
+    expect(analytics.recent.length).toBeGreaterThanOrEqual(1);
   });
 });
