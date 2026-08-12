@@ -137,3 +137,82 @@ export async function deleteShortUrl(
     throw new Error(detail);
   }
 }
+
+export type AdminUrl = Url & { clerkUserId: string | null };
+
+export type AdminMetrics = {
+  uptimeSeconds: number;
+  redirects: {
+    total: number;
+    hits: number;
+    misses: number;
+    errors: number;
+  };
+  rateLimit429: number;
+  redirectLatencyMs: {
+    samples: number;
+    avg: number | null;
+    p50: number | null;
+    p95: number | null;
+    p99: number | null;
+  };
+  services: { database: string };
+};
+
+export async function fetchAdminMe(
+  getToken: GetToken
+): Promise<{ isAdmin: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/me`, {
+    headers: await authHeaders(getToken),
+  });
+  const json = (await res.json()) as ApiResponse<{ isAdmin: boolean }>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Admin me failed");
+  }
+  return json.data;
+}
+
+export async function fetchAdminMetrics(
+  getToken: GetToken
+): Promise<AdminMetrics> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/metrics`, {
+    headers: await authHeaders(getToken),
+  });
+  const json = (await res.json()) as ApiResponse<AdminMetrics>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Metrics failed");
+  }
+  return json.data;
+}
+
+export async function adminGetUrl(
+  getToken: GetToken,
+  shortCode: string
+): Promise<AdminUrl> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/urls/${shortCode}`, {
+    headers: await authHeaders(getToken),
+  });
+  const json = (await res.json()) as ApiResponse<AdminUrl>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Admin lookup failed");
+  }
+  return json.data;
+}
+
+export async function adminDisableUrl(
+  getToken: GetToken,
+  shortCode: string
+): Promise<AdminUrl> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/urls/${shortCode}/disable`,
+    {
+      method: "POST",
+      headers: await authHeaders(getToken),
+    }
+  );
+  const json = (await res.json()) as ApiResponse<AdminUrl>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Admin disable failed");
+  }
+  return json.data;
+}

@@ -11,6 +11,7 @@ import {
 } from '../utils/url.js';
 import { isLinkExpired, resolveExpiryPatch } from '../utils/expiry.js';
 import { AppError } from '../utils/errors.js';
+import { logger } from '../utils/logger.js';
 import type { DeadLinkReason } from '../utils/deadLinkPage.js';
 import {
   CreateUrlRequest,
@@ -223,6 +224,50 @@ export class UrlService {
   static async deleteAllForClerkUser(clerkUserId: string): Promise<number> {
     const result = await prisma.url.deleteMany({ where: { clerkUserId } });
     return result.count;
+  }
+
+  /** Admin: lookup any link by code (includes owner id). */
+  static async adminGetByShortCode(shortCode: string): Promise<
+    UrlResponse & { clerkUserId: string | null }
+  > {
+    const code = normalizeShortCode(shortCode);
+    const url = await prisma.url.findUnique({ where: { shortCode: code } });
+    if (!url) {
+      throw new AppError('URL not found', 404);
+    }
+    return {
+      ...this.format(url),
+      clerkUserId: url.clerkUserId,
+    };
+  }
+
+  /** Admin: force-disable any link (takedown). */
+  static async adminDisableByShortCode(
+    shortCode: string,
+    adminUserId: string
+  ): Promise<UrlResponse & { clerkUserId: string | null }> {
+    const code = normalizeShortCode(shortCode);
+    const existing = await prisma.url.findUnique({ where: { shortCode: code } });
+    if (!existing) {
+      throw new AppError('URL not found', 404);
+    }
+
+    const url = await prisma.url.update({
+      where: { shortCode: code },
+      data: { isActive: false },
+    });
+
+    // Structured audit trail in logs (no separate audit table yet).
+    logger.warn('Admin disabled short URL', {
+      shortCode: code,
+      adminUserId,
+      previousOwner: existing.clerkUserId,
+    });
+
+    return {
+      ...this.format(url),
+      clerkUserId: url.clerkUserId,
+    };
   }
 
   static async resolveRedirect(shortCode: string): Promise<RedirectResult> {

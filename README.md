@@ -6,7 +6,8 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 
 - Paste a long URL → get a short link (**guest or signed-in**)
 - Optional custom alias
-- Signed-in: list / edit destination / rename / disable / delete owned links
+- Signed-in **dashboard** (`/dashboard`): list / edit / rename / disable / delete owned links
+- **Admin** (`/admin`): force-disable any code; process metrics (redirect latency, 429s)
 - Click count on redirect (atomic Postgres `UPDATE`)
 - Flexible expiry: relative (`30m`, `7d`), absolute datetime, and/or max clicks
 - Case-insensitive short codes; race-safe create + max-click redirects
@@ -24,8 +25,10 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 ## Core design notes
 
 - **Hybrid create:** `POST /api/v1/urls/shorten` works without auth (`clerk_user_id` null). Bearer token attaches owner.
-- **Manage stays owned:** list / get / patch / delete require Clerk and ownership.
+- **Manage stays owned:** list / get / patch / delete require Clerk and ownership (UI on `/dashboard`).
 - **Thin redirect path:** `GET /:code` skips Clerk, body parsers, compression, and the global API rate limit. Dedicated redirect limiter only. No Redis — Postgres-only hot path.
+- **Monitoring:** `/health` includes redirect counters + latency percentiles + 429 count (in-process). Full snapshot also on `GET /api/v1/admin/metrics`.
+- **Admin:** set `ADMIN_CLERK_USER_IDS` (comma-separated Clerk user ids) for takedown + metrics UI.
 
 ## Run locally
 
@@ -90,9 +93,13 @@ Open **http://localhost:3001**
 | GET | `/api/v1/urls/:code` | Required | Get owned link |
 | PATCH | `/api/v1/urls/:code` | Required | Edit owned link |
 | DELETE | `/api/v1/urls/:code` | Required | Delete owned link |
+| GET | `/api/v1/admin/me` | Required | `{ isAdmin }` for UI nav |
+| GET | `/api/v1/admin/metrics` | Admin | Process metrics snapshot |
+| GET | `/api/v1/admin/urls/:code` | Admin | Lookup any link (incl. owner) |
+| POST | `/api/v1/admin/urls/:code/disable` | Admin | Force-disable (takedown) |
 | POST | `/api/v1/webhooks/clerk` | Svix | Clerk lifecycle (e.g. purge on delete) |
 | GET | `/:code` | Public | Redirect (302); 404/410 HTML or JSON if dead |
-| GET | `/health` | Public | Health |
+| GET | `/health` | Public | Health + redirect metrics |
 
 Expiry inputs (create/update):
 

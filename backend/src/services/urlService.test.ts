@@ -271,4 +271,30 @@ describe('UrlService core flows', () => {
       )
     ).rejects.toBeInstanceOf(AppError);
   });
+
+  it('admin can look up and disable any link', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const created = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/admin-takedown',
+          customAlias: `t-admin-${suffix}`,
+        },
+        OTHER_USER
+      )
+    );
+
+    const looked = await UrlService.adminGetByShortCode(created.shortCode);
+    expect(looked.clerkUserId).toBe(OTHER_USER);
+    expect(looked.isActive).toBe(true);
+
+    const disabled = await UrlService.adminDisableByShortCode(
+      created.shortCode,
+      'user_admin'
+    );
+    expect(disabled.isActive).toBe(false);
+
+    const redirect = await UrlService.resolveRedirect(created.shortCode);
+    expect(redirect).toEqual({ ok: false, reason: 'disabled' });
+  });
 });

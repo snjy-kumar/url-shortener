@@ -9,6 +9,7 @@ import { clerkMiddleware } from '@clerk/express';
 import { config } from './config/env.js';
 import { prisma } from './config/database.js';
 import { logger } from './utils/logger.js';
+import { metrics } from './utils/metrics.js';
 import { asyncHandler } from './utils/asyncHandler.js';
 import {
   errorHandler,
@@ -19,6 +20,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import { UrlController } from './controllers/urlController.js';
 import { ClerkWebhookController } from './controllers/clerkWebhookController.js';
 import urlRoutes from './routes/url.js';
+import adminRoutes from './routes/admin.js';
 
 setupGlobalErrorHandlers();
 
@@ -60,12 +62,17 @@ app.post(
 app.get(
   '/health',
   asyncHandler(async (_req, res) => {
+    const snap = metrics.snapshot();
     const checks = {
       status: 'OK' as string,
       timestamp: new Date().toISOString(),
+      uptimeSeconds: snap.uptimeSeconds,
       services: {
         database: 'unknown',
       },
+      redirects: snap.redirects,
+      rateLimit429: snap.rateLimit429,
+      redirectLatencyMs: snap.redirectLatencyMs,
     };
 
     try {
@@ -95,6 +102,13 @@ api.use(
     max: config.RATE_LIMIT_MAX_REQUESTS,
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (req, res, _next, options) => {
+      metrics.record429();
+      res.status(options.statusCode).json({
+        success: false,
+        message: 'Too many requests',
+      });
+    },
   })
 );
 api.use(express.json({ limit: '1mb' }));
@@ -102,6 +116,7 @@ api.use(express.urlencoded({ extended: true, limit: '1mb' }));
 api.use(compression());
 api.use(requestLogger);
 api.use('/urls', urlRoutes);
+api.use('/admin', adminRoutes);
 app.use('/api/v1', api);
 
 const redirectLimiter = rateLimit({
@@ -109,6 +124,13 @@ const redirectLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res, _next, options) => {
+    metrics.record429();
+    res.status(options.statusCode).json({
+      success: false,
+      message: 'Too many requests',
+    });
+  },
 });
 
 app.get('/:shortCode', redirectLimiter, UrlController.redirectToOriginal);

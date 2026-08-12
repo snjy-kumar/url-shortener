@@ -20,6 +20,7 @@ interface Config {
   CLERK_SECRET_KEY: string;
   CLERK_WEBHOOK_SIGNING_SECRET: string | undefined;
   CLERK_AUTHORIZED_PARTIES: string[];
+  ADMIN_CLERK_USER_IDS: string[];
 }
 
 const required = (key: string, fallback?: string): string => {
@@ -90,4 +91,8 @@ export const config: Config = {
   CLERK_SECRET_KEY: required('CLERK_SECRET_KEY'),
   CLERK_WEBHOOK_SIGNING_SECRET: process.env['CLERK_WEBHOOK_SIGNING_SECRET'],
   CLERK_AUTHORIZED_PARTIES: authorizedParties,
+  ADMIN_CLERK_USER_IDS: (process.env['ADMIN_CLERK_USER_IDS'] || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
 };

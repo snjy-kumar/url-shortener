@@ -9,6 +9,7 @@ import {
   deadLinkMessage,
   renderDeadLinkPage,
 } from '../utils/deadLinkPage.js';
+import { metrics } from '../utils/metrics.js';
 
 const wantsHtml = (req: Request): boolean => {
   const accept = req.get('Accept') || '';
@@ -112,8 +113,10 @@ export class UrlController {
   });
 
   static redirectToOriginal = asyncHandler(async (req: Request, res: Response) => {
+    const started = performance.now();
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {
+      metrics.recordRedirect(performance.now() - started, 'miss');
       if (wantsHtml(req)) {
         res.status(404).type('html').send(renderDeadLinkPage('not_found'));
         return;
@@ -121,24 +124,31 @@ export class UrlController {
       throw new AppError('Not found', 404);
     }
 
-    const resolved = await UrlService.resolveRedirect(shortCode);
-    if (resolved.ok) {
-      res.redirect(302, resolved.originalUrl);
-      return;
+    try {
+      const resolved = await UrlService.resolveRedirect(shortCode);
+      if (resolved.ok) {
+        metrics.recordRedirect(performance.now() - started, 'hit');
+        res.redirect(302, resolved.originalUrl);
+        return;
+      }
+
+      metrics.recordRedirect(performance.now() - started, 'miss');
+      const status = resolved.reason === 'not_found' ? 404 : 410;
+      const message = deadLinkMessage(resolved.reason);
+
+      if (wantsHtml(req)) {
+        res.status(status).type('html').send(renderDeadLinkPage(resolved.reason));
+        return;
+      }
+
+      res.status(status).json({
+        success: false,
+        message,
+        reason: resolved.reason,
+      });
+    } catch (error) {
+      metrics.recordRedirect(performance.now() - started, 'error');
+      throw error;
     }
-
-    const status = resolved.reason === 'not_found' ? 404 : 410;
-    const message = deadLinkMessage(resolved.reason);
-
-    if (wantsHtml(req)) {
-      res.status(status).type('html').send(renderDeadLinkPage(resolved.reason));
-      return;
-    }
-
-    res.status(status).json({
-      success: false,
-      message,
-      reason: resolved.reason,
-    });
   });
 }
