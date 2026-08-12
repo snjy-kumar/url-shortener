@@ -84,6 +84,32 @@ npm run dev            # http://localhost:3001
 
 Open **http://localhost:3001**
 
+## Ops checklist (admin + webhook)
+
+### Admin access
+
+1. Sign in once at http://localhost:3001
+2. Copy your Clerk user id from [Clerk Dashboard → Users](https://dashboard.clerk.com) (`user_...`)
+3. In `backend/.env`:
+   ```bash
+   ADMIN_CLERK_USER_IDS=user_YOUR_ID
+   ```
+4. Restart backend → header shows **Admin**; `/admin` metrics + takedown work
+
+### Clerk `user.deleted` webhook
+
+Code path: `POST /api/v1/webhooks/clerk` (Svix verify → purge owned URLs).
+
+1. Clerk Dashboard → **Webhooks** → Add endpoint  
+   - URL: `https://<your-public-api-host>/api/v1/webhooks/clerk`  
+   - Local: use [Clerk tunnel / ngrok](https://clerk.com/docs/webhooks/sync-data) to expose `:3000`
+2. Subscribe to **`user.deleted`**
+3. Copy signing secret → `backend/.env`:
+   ```bash
+   CLERK_WEBHOOK_SIGNING_SECRET=whsec_...
+   ```
+4. Restart backend. Without this secret, webhook returns **503**.
+
 ## API (v1)
 
 | Method | Path | Auth | Purpose |
