@@ -43,6 +43,7 @@ export default function Home() {
   const [expiryPreset, setExpiryPreset] = useState<ExpiryPreset>("never");
   const [customExpiresAt, setCustomExpiresAt] = useState("");
   const [maxClicks, setMaxClicks] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -95,6 +96,7 @@ export default function Home() {
         originalUrl: url.trim(),
         customAlias: alias.trim() || undefined,
         turnstileToken: turnstileToken || undefined,
+        password: password.trim() || undefined,
         ...expiry,
       });
       if (data.claimToken) {
@@ -251,6 +253,13 @@ export default function Home() {
                 value={maxClicks}
                 onChange={(e) => setMaxClicks(e.target.value)}
                 placeholder="Max clicks (optional)"
+                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password gate (optional)"
                 className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
               />
             </div>

@@ -19,6 +19,7 @@ COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 COPY --from=builder --chown=nodejs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nodejs:nodejs /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder --chown=nodejs:nodejs /app/openapi.json ./openapi.json
 RUN mkdir -p logs && chown nodejs:nodejs logs
 USER nodejs
 EXPOSE 3000

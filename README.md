@@ -15,6 +15,7 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 - Clerk auth for ownership; webhook purges links on `user.deleted`
 - Optional **Safe Browsing** malware/phishing check on create/update
 - Docker Compose: Postgres + Redis + API + web
+- Password-gated redirects, QR PNGs, bulk create, abuse reports, OpenAPI at `/api/v1/openapi.json`
 
 ## Stack
 

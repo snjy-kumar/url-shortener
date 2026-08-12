@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -22,6 +25,11 @@ import { UrlController } from './controllers/urlController.js';
 import { ClerkWebhookController } from './controllers/clerkWebhookController.js';
 import urlRoutes from './routes/url.js';
 import adminRoutes from './routes/admin.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const openApiDoc = JSON.parse(
+  readFileSync(join(__dirname, '..', 'openapi.json'), 'utf8')
+) as unknown;
 
 setupGlobalErrorHandlers();
 
@@ -118,6 +126,9 @@ api.use(compression());
 api.use(requestLogger);
 api.use('/urls', urlRoutes);
 api.use('/admin', adminRoutes);
+api.get('/openapi.json', (_req, res) => {
+  res.json(openApiDoc);
+});
 app.use('/api/v1', api);
 
 const redirectLimiter = rateLimit({
@@ -134,6 +145,13 @@ const redirectLimiter = rateLimit({
   },
 });
 
+app.post(
+  '/:shortCode/unlock',
+  express.urlencoded({ extended: true }),
+  redirectLimiter,
+  UrlController.unlockRedirect
+);
+app.get('/:shortCode/qr.png', redirectLimiter, UrlController.getQr);
 app.get('/:shortCode', redirectLimiter, UrlController.redirectToOriginal);
 
 app.use('/{*splat}', notFoundHandler);

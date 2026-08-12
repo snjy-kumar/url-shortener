@@ -241,6 +241,102 @@ export async function fetchAdminAudit(
   return json.data;
 }
 
+export async function createBulkUrls(
+  getToken: GetToken,
+  urls: Array<{ originalUrl: string; customAlias?: string }>
+): Promise<{
+  created: Url[];
+  errors: Array<{ index: number; message: string }>;
+}> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/bulk`, {
+    method: "POST",
+    headers: await authHeaders(getToken, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ urls }),
+  });
+  const json = (await res.json()) as ApiResponse<{
+    created: Url[];
+    errors: Array<{ index: number; message: string }>;
+  }>;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Bulk create failed");
+  }
+  return json.data;
+}
+
+export async function reportAbuse(
+  shortCode: string,
+  reason: string,
+  reporterEmail?: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/urls/abuse`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ shortCode, reason, reporterEmail }),
+  });
+  const json = (await res.json()) as ApiResponse;
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || "Report failed");
+  }
+}
+
+export function qrPngUrl(shortCode: string): string {
+  return `${API_BASE}/${encodeURIComponent(shortCode)}/qr.png`;
+}
+
+export async function fetchAdminAbuse(
+  getToken: GetToken,
+  status = "open"
+): Promise<
+  Array<{
+    id: number;
+    shortCode: string;
+    reason: string;
+    status: string;
+    createdAt: string;
+  }>
+> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/abuse?status=${encodeURIComponent(status)}`,
+    { headers: await authHeaders(getToken) }
+  );
+  const json = (await res.json()) as ApiResponse<
+    Array<{
+      id: number;
+      shortCode: string;
+      reason: string;
+      status: string;
+      createdAt: string;
+    }>
+  >;
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || "Abuse list failed");
+  }
+  return json.data;
+}
+
+export async function resolveAdminAbuse(
+  getToken: GetToken,
+  id: number,
+  status: "resolved" | "dismissed"
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/abuse/${id}/resolve`, {
+    method: "POST",
+    headers: await authHeaders(getToken, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ status }),
+  });
+  const json = (await res.json()) as ApiResponse;
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || "Resolve failed");
+  }
+}
+
 export async function fetchAdminMe(
   getToken: GetToken
 ): Promise<{ isAdmin: boolean }> {

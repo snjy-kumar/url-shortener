@@ -5,6 +5,7 @@ export interface CreateUrlRequest {
   expiresIn?: string | number | null;
   maxClicks?: number | null;
   turnstileToken?: string;
+  password?: string;
 }
 
 export interface UpdateUrlRequest {
@@ -26,6 +27,7 @@ export interface Url {
   expiresAt: string | null;
   maxClicks: number | null;
   isExpired: boolean;
+  hasPassword?: boolean;
   createdAt: string;
   updatedAt: string;
   claimToken?: string;

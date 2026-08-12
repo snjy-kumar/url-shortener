@@ -3,10 +3,12 @@
 import { FormEvent, startTransition, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
+  createBulkUrls,
   deleteShortUrl,
   fetchUrlAnalytics,
   getShortUrl,
   listShortUrls,
+  qrPngUrl,
   updateShortUrl,
 } from "@/lib/api";
 import {
@@ -34,6 +36,7 @@ export default function DashboardPage() {
   const [editCustomExpiresAt, setEditCustomExpiresAt] = useState("");
   const [editMaxClicks, setEditMaxClicks] = useState("");
   const [lookupCode, setLookupCode] = useState("");
+  const [bulkText, setBulkText] = useState("");
   const [recent, setRecent] = useState<Url[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,6 +180,46 @@ export default function DashboardPage() {
             </button>
           </form>
 
+          <div className="mt-6 space-y-2">
+            <label className="block text-sm text-muted">
+              Bulk create (one URL per line)
+            </label>
+            <textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              rows={4}
+              placeholder={"https://example.com/a\nhttps://example.com/b"}
+              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-ink outline-none ring-sea/30 focus:ring-2"
+            />
+            <button
+              type="button"
+              disabled={busy || !bulkText.trim()}
+              onClick={() =>
+                run(async () => {
+                  const lines = bulkText
+                    .split("\n")
+                    .map((l) => l.trim())
+                    .filter(Boolean)
+                    .slice(0, 50);
+                  const result = await createBulkUrls(
+                    getToken,
+                    lines.map((originalUrl) => ({ originalUrl }))
+                  );
+                  setBulkText("");
+                  await refreshRecent();
+                  if (result.errors.length) {
+                    throw new Error(
+                      `Created ${result.created.length}; ${result.errors.length} failed`
+                    );
+                  }
+                })
+              }
+              className="rounded-md bg-sea px-3 py-1.5 text-sm font-medium text-white hover:bg-sea-dark disabled:opacity-50"
+            >
+              Bulk shorten
+            </button>
+          </div>
+
           {error && (
             <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
@@ -250,7 +293,16 @@ export default function DashboardPage() {
                   <span className="text-ink">
                     {formatExpirySummary(managed)}
                   </span>
+                  {managed.hasPassword ? " · password gated" : ""}
                 </p>
+                <a
+                  href={qrPngUrl(managed.shortCode)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-sm text-sea underline-offset-2 hover:underline"
+                >
+                  Download QR
+                </a>
               </div>
 
               <div>

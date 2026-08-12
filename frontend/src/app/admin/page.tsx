@@ -5,9 +5,11 @@ import { useAuth } from "@clerk/nextjs";
 import {
   adminDisableUrl,
   adminGetUrl,
+  fetchAdminAbuse,
   fetchAdminAudit,
   fetchAdminMe,
   fetchAdminMetrics,
+  resolveAdminAbuse,
   type AdminMetrics,
   type AdminUrl,
 } from "@/lib/api";
@@ -29,6 +31,15 @@ export default function AdminPage() {
       createdAt: string;
     }>
   >([]);
+  const [abuse, setAbuse] = useState<
+    Array<{
+      id: number;
+      shortCode: string;
+      reason: string;
+      status: string;
+      createdAt: string;
+    }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -42,13 +53,15 @@ export default function AdminPage() {
         if (cancelled) return;
         setIsAdmin(me.isAdmin);
         if (me.isAdmin) {
-          const [m, a] = await Promise.all([
+          const [m, a, ab] = await Promise.all([
             fetchAdminMetrics(getToken),
             fetchAdminAudit(getToken, 20),
+            fetchAdminAbuse(getToken, "open"),
           ]);
           if (!cancelled) {
             setMetrics(m);
             setAudit(a);
+            setAbuse(ab);
           }
         }
       } catch {
@@ -180,6 +193,85 @@ export default function AdminPage() {
                   </dd>
                 </div>
               </dl>
+            </section>
+          )}
+
+          {abuse.length > 0 && (
+            <section className="mt-6 rounded-lg border border-line bg-white p-4">
+              <p className="mb-2 text-sm font-medium text-ink">
+                Open abuse reports
+              </p>
+              <ul className="space-y-3 text-sm">
+                {abuse.map((row) => (
+                  <li
+                    key={row.id}
+                    className="flex flex-wrap items-start justify-between gap-2 border-b border-line pb-2"
+                  >
+                    <div>
+                      <span className="font-medium text-sea">{row.shortCode}</span>
+                      <p className="text-muted">{row.reason}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              await resolveAdminAbuse(
+                                getToken,
+                                row.id,
+                                "resolved"
+                              );
+                              setAbuse(await fetchAdminAbuse(getToken, "open"));
+                            } catch (err) {
+                              setError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Resolve failed"
+                              );
+                            } finally {
+                              setBusy(false);
+                            }
+                          })()
+                        }
+                        className="rounded-md border border-line px-2 py-1 text-ink hover:bg-paper"
+                      >
+                        Resolve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              await resolveAdminAbuse(
+                                getToken,
+                                row.id,
+                                "dismissed"
+                              );
+                              setAbuse(await fetchAdminAbuse(getToken, "open"));
+                            } catch (err) {
+                              setError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Dismiss failed"
+                              );
+                            } finally {
+                              setBusy(false);
+                            }
+                          })()
+                        }
+                        className="rounded-md border border-line px-2 py-1 text-ink hover:bg-paper"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 

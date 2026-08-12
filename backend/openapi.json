@@ -1,0 +1,127 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Shortlink API",
+    "version": "1.0.0",
+    "description": "URL shortener API — hybrid create, owned manage, admin, analytics."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "paths": {
+    "/urls/shorten": {
+      "post": {
+        "summary": "Create short URL (auth optional)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["originalUrl"],
+                "properties": {
+                  "originalUrl": { "type": "string" },
+                  "customAlias": { "type": "string" },
+                  "expiresIn": {},
+                  "expiresAt": { "type": "string", "nullable": true },
+                  "maxClicks": { "type": "integer", "nullable": true },
+                  "password": { "type": "string" },
+                  "turnstileToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/urls/bulk": {
+      "post": {
+        "summary": "Bulk create (auth required, max 50)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "201": { "description": "Created batch" } }
+      }
+    },
+    "/urls/abuse": {
+      "post": {
+        "summary": "Report abusive short link",
+        "responses": { "201": { "description": "Report filed" } }
+      }
+    },
+    "/urls/{code}": {
+      "get": {
+        "summary": "Get owned URL",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "patch": {
+        "summary": "Update owned URL",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "summary": "Delete owned URL",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/urls/{code}/qr": {
+      "get": {
+        "summary": "PNG QR for short URL",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "image/png" } }
+      }
+    },
+    "/urls/{code}/claim": {
+      "post": {
+        "summary": "Claim anonymous URL",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Claimed" } }
+      }
+    },
+    "/urls/{code}/analytics": {
+      "get": {
+        "summary": "Click analytics for owned URL",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/admin/me": {
+      "get": {
+        "summary": "Is current user admin?",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/admin/metrics": {
+      "get": {
+        "summary": "Process metrics",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/admin/abuse": {
+      "get": {
+        "summary": "List abuse reports",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "This OpenAPI document",
+        "responses": { "200": { "description": "OpenAPI JSON" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

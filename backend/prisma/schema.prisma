@@ -15,6 +15,8 @@ model Url {
   clerkUserId    String?   @map("clerk_user_id")
   /// SHA-256 of one-time claim token (anonymous creates only).
   claimTokenHash String?   @map("claim_token_hash")
+  /// scrypt hash for password-gated redirects (optional).
+  passwordHash   String?   @map("password_hash")
   isActive       Boolean   @default(true) @map("is_active")
   clickCount     Int       @default(0) @map("click_count")
   expiresAt      DateTime? @map("expires_at")
@@ -22,7 +24,8 @@ model Url {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  clickEvents ClickEvent[]
+  clickEvents  ClickEvent[]
+  abuseReports AbuseReport[]
 
   @@map("urls")
 }
@@ -55,4 +58,22 @@ model AdminAuditLog {
   @@index([createdAt])
   @@index([shortCode])
   @@map("admin_audit_logs")
+}
+
+model AbuseReport {
+  id            Int       @id @default(autoincrement())
+  shortCode     String    @map("short_code")
+  urlId         Int?      @map("url_id")
+  reason        String    @db.VarChar(1000)
+  reporterEmail String?   @map("reporter_email") @db.VarChar(320)
+  status        String    @default("open") // open | resolved | dismissed
+  createdAt     DateTime  @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+  resolvedBy    String?   @map("resolved_by")
+
+  url Url? @relation(fields: [urlId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([shortCode])
+  @@map("abuse_reports")
 }

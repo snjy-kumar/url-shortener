@@ -80,4 +80,32 @@ export class AdminController {
       data,
     });
   });
+
+  static listAbuse = asyncHandler(async (req: Request, res: Response) => {
+    const status = String(req.query['status'] ?? 'open');
+    const limit = Number(req.query['limit'] ?? 50);
+    const data = await UrlService.adminListAbuse(
+      status,
+      Number.isFinite(limit) ? limit : 50
+    );
+    res.status(200).json({ success: true, data });
+  });
+
+  static resolveAbuse = asyncHandler(async (req: Request, res: Response) => {
+    const id = Number(req.params['id']);
+    if (!Number.isFinite(id)) {
+      throw new AppError('Invalid id', 400);
+    }
+    const status = req.body?.status === 'dismissed' ? 'dismissed' : 'resolved';
+    const auth = getAuth(req);
+    const adminUserId = auth.isAuthenticated ? auth.userId : 'unknown';
+    const row = await UrlService.adminResolveAbuse(id, adminUserId, status);
+    res.status(200).json({
+      success: true,
+      data: {
+        id: row.id,
+        status: row.status,
+      },
+    });
+  });
 }

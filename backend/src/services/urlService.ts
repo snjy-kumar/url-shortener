@@ -20,8 +20,10 @@ import {
 } from '../utils/claim.js';
 import { redirectCache } from '../utils/redirectCache.js';
 import { assertUrlNotMalicious } from '../utils/safeBrowsing.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
 import type { DeadLinkReason } from '../utils/deadLinkPage.js';
 import {
+  BulkCreateRequest,
   CreateUrlRequest,
   UpdateUrlRequest,
   UrlResponse,
@@ -33,6 +35,7 @@ type UrlRow = {
   originalUrl: string;
   clerkUserId: string | null;
   claimTokenHash?: string | null;
+  passwordHash?: string | null;
   isActive: boolean;
   clickCount: number;
   expiresAt: Date | null;
@@ -43,7 +46,7 @@ type UrlRow = {
 
 export type RedirectResult =
   | { ok: true; originalUrl: string; urlId: number }
-  | { ok: false; reason: DeadLinkReason };
+  | { ok: false; reason: DeadLinkReason | 'password_required' };
 
 export type ClickMeta = {
   referrer?: string;
@@ -73,11 +76,19 @@ export class UrlService {
 
     const claimToken = clerkUserId ? null : generateClaimToken();
     const claimTokenHash = claimToken ? hashClaimToken(claimToken) : null;
+    let passwordHash: string | null = null;
+    if (data.password !== undefined && data.password !== '') {
+      if (data.password.length < 4) {
+        throw new AppError('Password must be at least 4 characters', 400);
+      }
+      passwordHash = await hashPassword(data.password);
+    }
 
     const createData = {
       originalUrl: normalizedUrl,
       clerkUserId,
       claimTokenHash,
+      passwordHash,
       expiresAt: expiry.expiresAt ?? null,
       maxClicks: expiry.maxClicks ?? null,
     };
@@ -243,6 +254,7 @@ export class UrlService {
       isActive?: boolean;
       expiresAt?: Date | null;
       maxClicks?: number | null;
+      passwordHash?: string | null;
     } = {};
 
     if (data.originalUrl !== undefined) {
@@ -281,6 +293,16 @@ export class UrlService {
           maxClicks: data.maxClicks,
         })
       );
+    }
+
+    if (data.password !== undefined) {
+      if (data.password === null || data.password === '') {
+        patch.passwordHash = null;
+      } else if (data.password.length < 4) {
+        throw new AppError('Password must be at least 4 characters', 400);
+      } else {
+        patch.passwordHash = await hashPassword(data.password);
+      }
     }
 
     if (Object.keys(patch).length === 0) {
@@ -406,13 +428,23 @@ export class UrlService {
 
   static async resolveRedirect(
     shortCode: string,
-    meta?: ClickMeta
+    meta?: ClickMeta,
+    options?: { unlocked?: boolean }
   ): Promise<RedirectResult> {
     const code = normalizeShortCode(shortCode);
 
-    // Cache fast-path only when max_clicks is unset (atomic limit still needs DB).
+    const existing = await prisma.url.findUnique({ where: { shortCode: code } });
+    if (!existing) {
+      return { ok: false, reason: 'not_found' };
+    }
+    if (existing.passwordHash && !options?.unlocked) {
+      return { ok: false, reason: 'password_required' };
+    }
+
+    // Cache fast-path only when max_clicks unset and no password.
     const cached = await redirectCache.get(code);
     if (
+      !existing.passwordHash &&
       cached &&
       cached.maxClicks === null &&
       cached.isActive &&
@@ -442,17 +474,122 @@ export class UrlService {
     const hit = rows[0];
     if (hit) {
       void this.recordClickEvent(hit.id, code, meta);
-      void redirectCache.set(code, {
-        id: hit.id,
-        originalUrl: hit.original_url,
-        isActive: true,
-        expiresAt: hit.expires_at ? hit.expires_at.toISOString() : null,
-        maxClicks: hit.max_clicks,
-      });
+      if (!existing.passwordHash) {
+        void redirectCache.set(code, {
+          id: hit.id,
+          originalUrl: hit.original_url,
+          isActive: true,
+          expiresAt: hit.expires_at ? hit.expires_at.toISOString() : null,
+          maxClicks: hit.max_clicks,
+        });
+      }
       return { ok: true, originalUrl: hit.original_url, urlId: hit.id };
     }
 
     return this.explainRedirectFailure(code);
+  }
+
+  static async unlockRedirect(
+    shortCode: string,
+    password: string,
+    meta?: ClickMeta
+  ): Promise<RedirectResult> {
+    const code = normalizeShortCode(shortCode);
+    const url = await prisma.url.findUnique({ where: { shortCode: code } });
+    if (!url) {
+      return { ok: false, reason: 'not_found' };
+    }
+    if (!url.passwordHash) {
+      return this.resolveRedirect(code, meta, { unlocked: true });
+    }
+    const ok = await verifyPassword(password, url.passwordHash);
+    if (!ok) {
+      throw new AppError('Invalid password', 403);
+    }
+    return this.resolveRedirect(code, meta, { unlocked: true });
+  }
+
+  static async createBulk(
+    data: BulkCreateRequest,
+    clerkUserId: string
+  ): Promise<{ created: UrlResponse[]; errors: Array<{ index: number; message: string }> }> {
+    const items = data.urls?.slice(0, 50) ?? [];
+    if (items.length === 0) {
+      throw new AppError('urls array required (max 50)', 400);
+    }
+    const created: UrlResponse[] = [];
+    const errors: Array<{ index: number; message: string }> = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
+      try {
+        const row = await this.createShortUrl(item, clerkUserId);
+        created.push(row);
+      } catch (error) {
+        errors.push({
+          index: i,
+          message: error instanceof AppError ? error.message : 'Create failed',
+        });
+      }
+    }
+    return { created, errors };
+  }
+
+  static async reportAbuse(input: {
+    shortCode: string;
+    reason: string;
+    reporterEmail?: string;
+  }): Promise<{ id: number }> {
+    const code = normalizeShortCode(input.shortCode);
+    const reason = input.reason.trim().slice(0, 1000);
+    if (reason.length < 5) {
+      throw new AppError('Reason too short', 400);
+    }
+    const url = await prisma.url.findUnique({ where: { shortCode: code } });
+    const row = await prisma.abuseReport.create({
+      data: {
+        shortCode: code,
+        urlId: url?.id ?? null,
+        reason,
+        reporterEmail: input.reporterEmail?.trim().slice(0, 320) || null,
+      },
+    });
+    return { id: row.id };
+  }
+
+  static async adminListAbuse(status = 'open', limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const rows = await prisma.abuseReport.findMany({
+      where: status === 'all' ? undefined : { status },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      shortCode: r.shortCode,
+      reason: r.reason,
+      reporterEmail: r.reporterEmail,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      resolvedAt: r.resolvedAt?.toISOString() ?? null,
+      resolvedBy: r.resolvedBy,
+    }));
+  }
+
+  static async adminResolveAbuse(
+    id: number,
+    adminUserId: string,
+    status: 'resolved' | 'dismissed'
+  ) {
+    const row = await prisma.abuseReport.update({
+      where: { id },
+      data: {
+        status,
+        resolvedAt: new Date(),
+        resolvedBy: adminUserId,
+      },
+    });
+    return row;
   }
 
   private static async bumpClickOnly(
@@ -555,6 +692,7 @@ export class UrlService {
       expiresAt: url.expiresAt ? url.expiresAt.toISOString() : null,
       maxClicks: url.maxClicks,
       isExpired: isLinkExpired(url),
+      hasPassword: Boolean(url.passwordHash),
       createdAt: url.createdAt.toISOString(),
       updatedAt: url.updatedAt.toISOString(),
     };

@@ -18,10 +18,28 @@ export interface CreateUrlRequest {
   maxClicks?: number | null;
   /** Cloudflare Turnstile token (guest create when captcha configured). */
   turnstileToken?: string;
+  /** Optional password gate on redirect. */
+  password?: string;
 }
 
 export interface ClaimUrlRequest {
   claimToken: string;
+}
+
+export interface BulkCreateRequest {
+  urls: Array<{
+    originalUrl: string;
+    customAlias?: string;
+    expiresIn?: string | number | null;
+    maxClicks?: number | null;
+    password?: string;
+  }>;
+}
+
+export interface AbuseReportRequest {
+  shortCode: string;
+  reason: string;
+  reporterEmail?: string;
 }
 
 export interface UpdateUrlRequest {
@@ -32,6 +50,8 @@ export interface UpdateUrlRequest {
   expiresAt?: string | null;
   expiresIn?: string | number | null;
   maxClicks?: number | null;
+  /** Set password, or null to clear. */
+  password?: string | null;
 }
 
 export interface UrlResponse {
@@ -44,6 +64,7 @@ export interface UrlResponse {
   expiresAt: string | null;
   maxClicks: number | null;
   isExpired: boolean;
+  hasPassword: boolean;
   createdAt: string;
   updatedAt: string;
   /** Present once on anonymous create — store to claim later. */

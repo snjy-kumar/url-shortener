@@ -15,6 +15,10 @@ import {
 } from '../utils/deadLinkPage.js';
 import { metrics } from '../utils/metrics.js';
 import { verifyTurnstileIfNeeded } from '../utils/turnstile.js';
+import { renderPasswordGatePage } from '../utils/passwordGatePage.js';
+import { generateShortUrl, normalizeShortCode } from '../utils/url.js';
+import QRCode from 'qrcode';
+import type { AbuseReportRequest, BulkCreateRequest } from '../types/index.js';
 
 const wantsHtml = (req: Request): boolean => {
   const accept = req.get('Accept') || '';
@@ -159,6 +163,88 @@ export class UrlController {
     });
   });
 
+  static createBulk = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
+    const result = await UrlService.createBulk(
+      req.body as BulkCreateRequest,
+      clerkUserId
+    );
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  });
+
+  static getQr = asyncHandler(async (req: Request, res: Response) => {
+    const shortCode = asStringParam(req.params['shortCode']);
+    if (!shortCode) {
+      throw new AppError('Not found', 404);
+    }
+    const code = normalizeShortCode(shortCode);
+    const shortUrl = generateShortUrl(code);
+    const png = await QRCode.toBuffer(shortUrl, {
+      type: 'png',
+      width: 512,
+      margin: 2,
+    });
+    res.type('png').send(png);
+  });
+
+  static reportAbuse = asyncHandler(async (req: Request, res: Response) => {
+    const body = req.body as AbuseReportRequest;
+    if (!body.shortCode || !body.reason) {
+      throw new AppError('shortCode and reason required', 400);
+    }
+    const data = await UrlService.reportAbuse({
+      shortCode: body.shortCode,
+      reason: body.reason,
+      reporterEmail: body.reporterEmail,
+    });
+    res.status(201).json({
+      success: true,
+      message: 'Abuse report submitted',
+      data,
+    });
+  });
+
+  static unlockRedirect = asyncHandler(async (req: Request, res: Response) => {
+    const shortCode = asStringParam(req.params['shortCode']);
+    const password =
+      typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!shortCode) {
+      res.status(404).type('html').send(renderDeadLinkPage('not_found'));
+      return;
+    }
+    try {
+      const resolved = await UrlService.unlockRedirect(shortCode, password, {
+        referrer: req.get('referer') || undefined,
+        userAgent: req.get('user-agent') || undefined,
+        ip: req.ip,
+      });
+      if (resolved.ok) {
+        res.redirect(302, resolved.originalUrl);
+        return;
+      }
+      if (resolved.reason === 'password_required') {
+        res
+          .status(401)
+          .type('html')
+          .send(renderPasswordGatePage(shortCode, 'Password required'));
+        return;
+      }
+      const status = resolved.reason === 'not_found' ? 404 : 410;
+      res
+        .status(status)
+        .type('html')
+        .send(renderDeadLinkPage(resolved.reason));
+    } catch {
+      res
+        .status(403)
+        .type('html')
+        .send(renderPasswordGatePage(shortCode, 'Invalid password'));
+    }
+  });
+
   static redirectToOriginal = asyncHandler(async (req: Request, res: Response) => {
     const started = performance.now();
     const shortCode = asStringParam(req.params['shortCode']);
@@ -184,6 +270,20 @@ export class UrlController {
       }
 
       metrics.recordRedirect(performance.now() - started, 'miss');
+
+      if (resolved.reason === 'password_required') {
+        if (wantsHtml(req)) {
+          res.status(401).type('html').send(renderPasswordGatePage(shortCode));
+          return;
+        }
+        res.status(401).json({
+          success: false,
+          message: 'Password required',
+          reason: 'password_required',
+        });
+        return;
+      }
+
       const status = resolved.reason === 'not_found' ? 404 : 410;
       const message = deadLinkMessage(resolved.reason);
 
