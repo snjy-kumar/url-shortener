@@ -1,26 +1,31 @@
 # Shortlink — URL Shortener
 
-Simple full-stack URL shortener: Next.js UI + Express API + PostgreSQL.
+Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 
 ## Features
 
-- Paste a long URL → get a short link
+- Paste a long URL → get a short link (**guest or signed-in**)
 - Optional custom alias
-- Edit destination (same short link)
-- Disable / enable / delete
-- Click count on redirect
+- Signed-in: list / edit destination / rename / disable / delete owned links
+- Click count on redirect (atomic Postgres `UPDATE`)
 - Flexible expiry: relative (`30m`, `7d`), absolute datetime, and/or max clicks
 - Case-insensitive short codes; race-safe create + max-click redirects
 - HTML 404/410 pages for dead links in browsers
-- Redirect via PostgreSQL
+- Clerk auth for ownership; webhook purges links on `user.deleted`
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Frontend | Next.js 16, React 19, Tailwind 4 |
-| Backend | Node 20+, Express 5, TypeScript 6 |
+| Frontend | Next.js 16, React 19, Tailwind 4, Clerk |
+| Backend | Node 20+, Express 5, TypeScript 6, Clerk |
 | DB | PostgreSQL + Prisma 7 |
+
+## Core design notes
+
+- **Hybrid create:** `POST /api/v1/urls/shorten` works without auth (`clerk_user_id` null). Bearer token attaches owner.
+- **Manage stays owned:** list / get / patch / delete require Clerk and ownership.
+- **Thin redirect path:** `GET /:code` skips Clerk, body parsers, compression, and the global API rate limit. Dedicated redirect limiter only. No Redis — Postgres-only hot path.
 
 ## Run locally
 
@@ -28,6 +33,7 @@ Simple full-stack URL shortener: Next.js UI + Express API + PostgreSQL.
 
 - Node 20.19+ (24 recommended)
 - PostgreSQL (Docker example below)
+- Clerk app keys (frontend + backend)
 
 ### PostgreSQL (Docker)
 
@@ -58,7 +64,7 @@ cd backend && npm run db:migrate
 ```bash
 cd backend
 npm install
-cp .env.example .env   # edit DATABASE_URL, BASE_URL, CORS_ORIGIN
+cp .env.example .env   # edit DATABASE_URL, BASE_URL, CORS_ORIGIN, Clerk keys
 npm run db:generate
 npm run db:migrate     # or: npm run db:push
 npm run dev            # http://localhost:3000
@@ -69,7 +75,7 @@ npm run dev            # http://localhost:3000
 ```bash
 cd frontend
 npm install
-echo 'NEXT_PUBLIC_API_URL=http://localhost:3000' > .env.local
+# .env.local: NEXT_PUBLIC_API_URL + NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (+ secret if needed)
 npm run dev            # http://localhost:3001
 ```
 
@@ -77,14 +83,16 @@ Open **http://localhost:3001**
 
 ## API (v1)
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/v1/urls/shorten` | Create short link (`expiresAt` / `expiresIn` / `maxClicks`) |
-| GET | `/api/v1/urls/:code` | Get link (incl. clicks / active / expiry) |
-| PATCH | `/api/v1/urls/:code` | Edit destination, `isActive`, expiry fields |
-| DELETE | `/api/v1/urls/:code` | Delete link |
-| GET | `/:code` | Redirect (302); 404/410 HTML or JSON if dead |
-| GET | `/health` | Health |
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/urls/shorten` | Optional | Create short link (`expiresAt` / `expiresIn` / `maxClicks`) |
+| GET | `/api/v1/urls/` | Required | List owned links |
+| GET | `/api/v1/urls/:code` | Required | Get owned link |
+| PATCH | `/api/v1/urls/:code` | Required | Edit owned link |
+| DELETE | `/api/v1/urls/:code` | Required | Delete owned link |
+| POST | `/api/v1/webhooks/clerk` | Svix | Clerk lifecycle (e.g. purge on delete) |
+| GET | `/:code` | Public | Redirect (302); 404/410 HTML or JSON if dead |
+| GET | `/health` | Public | Health |
 
 Expiry inputs (create/update):
 
@@ -111,7 +119,7 @@ url-shortener/
 │   └── Dockerfile
 └── frontend/
     └── src/
-        ├── app/          # home page UI
+        ├── app/          # home + Clerk sign-in/up
         ├── lib/          # API helper
         └── types/
 ```

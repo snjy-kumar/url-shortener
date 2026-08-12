@@ -12,6 +12,10 @@ export const RESERVED_SHORT_CODES = new Set([
   'health',
   'favicon.ico',
   'robots.txt',
+  'sign-in',
+  'sign-up',
+  'dashboard',
+  'admin',
 ]);
 
 export const normalizeShortCode = (code: string): string =>

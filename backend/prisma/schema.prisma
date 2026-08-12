@@ -11,7 +11,8 @@ model Url {
   id          Int       @id @default(autoincrement())
   shortCode   String    @unique @map("short_code")
   originalUrl String    @map("original_url")
-  clerkUserId String    @map("clerk_user_id")
+  /// Null = anonymous create. Partial index in migration (WHERE NOT NULL).
+  clerkUserId String?   @map("clerk_user_id")
   isActive    Boolean   @default(true) @map("is_active")
   clickCount  Int       @default(0) @map("click_count")
   expiresAt   DateTime? @map("expires_at")
@@ -19,6 +20,5 @@ model Url {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  @@index([clerkUserId])
   @@map("urls")
 }

@@ -81,6 +81,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [guestResult, setGuestResult] = useState<Url | null>(null);
 
   const syncManaged = (data: Url) => {
     setManaged(data);
@@ -122,6 +123,7 @@ export default function Home() {
       });
       return;
     }
+    startTransition(() => setGuestResult(null));
     let cancelled = false;
     void (async () => {
       try {
@@ -186,6 +188,7 @@ export default function Home() {
     e.preventDefault();
     setError(null);
     setManaged(null);
+    setGuestResult(null);
     setCopied(false);
     setLoading(true);
     try {
@@ -194,13 +197,17 @@ export default function Home() {
         customExpiresAt,
         maxClicks
       );
-      const data = await createShortUrl(getToken, {
+      const data = await createShortUrl(isSignedIn ? getToken : undefined, {
         originalUrl: url.trim(),
         customAlias: alias.trim() || undefined,
         ...expiry,
       });
-      syncManaged(data);
-      await refreshRecent();
+      if (isSignedIn) {
+        syncManaged(data);
+        await refreshRecent();
+      } else {
+        setGuestResult(data);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -259,9 +266,10 @@ export default function Home() {
     }
   };
 
-  const copy = async () => {
-    if (!managed) return;
-    await navigator.clipboard.writeText(managed.shortUrl);
+  const copy = async (shortUrl?: string) => {
+    const value = shortUrl ?? managed?.shortUrl;
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -452,35 +460,14 @@ export default function Home() {
         </div>
       </div>
       <p className="mt-3 max-w-md text-lg text-muted">
-        Paste a long URL. Get a short one.
+        Paste a long URL. Get a short one. Sign in to manage your links.
       </p>
 
       {!isLoaded ? (
         <p className="mt-8 text-sm text-muted">Loading…</p>
-      ) : !isSignedIn ? (
-        <div className="mt-8 rounded-lg border border-line bg-white p-6">
-          <p className="text-ink">Sign in to create and manage short links.</p>
-          <div className="mt-4 flex gap-2">
-            <SignInButton mode="modal">
-              <button
-                type="button"
-                className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:bg-paper"
-              >
-                Sign in
-              </button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <button
-                type="button"
-                className="rounded-lg bg-sea px-4 py-2 text-sm font-medium text-white hover:bg-sea-dark"
-              >
-                Sign up
-              </button>
-            </SignUpButton>
-          </div>
-        </div>
       ) : (
         <>
+      {isSignedIn && (
       <form onSubmit={onLookup} className="mt-8 flex gap-2">
         <input
           id="lookup"
@@ -498,6 +485,7 @@ export default function Home() {
           Load
         </button>
       </form>
+      )}
 
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <div>
@@ -554,7 +542,33 @@ export default function Home() {
         </p>
       )}
 
-      {recent.length > 0 && (
+      {!isSignedIn && guestResult && (
+        <div className="mt-6 space-y-3 rounded-lg border border-line bg-white p-4">
+          <p className="text-sm text-muted">Your short link</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              href={guestResult.shortUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all font-medium text-sea underline-offset-2 hover:underline"
+            >
+              {guestResult.shortUrl}
+            </a>
+            <button
+              type="button"
+              onClick={() => copy(guestResult.shortUrl)}
+              className="rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:bg-paper"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="text-sm text-muted">
+            Sign in next time to save and manage links.
+          </p>
+        </div>
+      )}
+
+      {isSignedIn && recent.length > 0 && (
         <section className="mt-8">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-sm text-muted">Your links</p>
@@ -589,7 +603,7 @@ export default function Home() {
         </section>
       )}
 
-      {managed && (
+      {isSignedIn && managed && (
         <div className="mt-6 space-y-4 rounded-lg border border-line bg-white p-4">
           <div>
             <p className="text-sm text-muted">Your short link</p>
@@ -604,7 +618,7 @@ export default function Home() {
               </a>
               <button
                 type="button"
-                onClick={copy}
+                onClick={() => copy()}
                 className="rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:bg-paper"
               >
                 {copied ? "Copied" : "Copy"}

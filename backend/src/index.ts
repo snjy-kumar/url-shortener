@@ -50,41 +50,12 @@ app.use(
   })
 );
 
-app.use(
-  clerkMiddleware({
-    ...(config.CLERK_AUTHORIZED_PARTIES.length > 0
-      ? { authorizedParties: config.CLERK_AUTHORIZED_PARTIES }
-      : {}),
-  })
-);
-
-app.use(
-  rateLimit({
-    windowMs: config.RATE_LIMIT_WINDOW_MS,
-    max: config.RATE_LIMIT_MAX_REQUESTS,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-const redirectLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // Raw body required for Svix signature verification (before express.json).
 app.post(
   '/api/v1/webhooks/clerk',
   express.raw({ type: 'application/json' }),
   ClerkWebhookController.handle
 );
-
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use(compression());
-app.use(requestLogger);
 
 app.get(
   '/health',
@@ -109,7 +80,37 @@ app.get(
   })
 );
 
-app.use('/api/v1/urls', urlRoutes);
+// API stack only — Clerk + body parsers + compression stay off the redirect hot path.
+const api = express.Router();
+api.use(
+  clerkMiddleware({
+    ...(config.CLERK_AUTHORIZED_PARTIES.length > 0
+      ? { authorizedParties: config.CLERK_AUTHORIZED_PARTIES }
+      : {}),
+  })
+);
+api.use(
+  rateLimit({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.RATE_LIMIT_MAX_REQUESTS,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+api.use(express.json({ limit: '1mb' }));
+api.use(express.urlencoded({ extended: true, limit: '1mb' }));
+api.use(compression());
+api.use(requestLogger);
+api.use('/urls', urlRoutes);
+app.use('/api/v1', api);
+
+const redirectLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get('/:shortCode', redirectLimiter, UrlController.redirectToOriginal);
 
 app.use('/{*splat}', notFoundHandler);

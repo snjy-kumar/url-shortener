@@ -26,9 +26,18 @@ const requireUserId = (req: Request): string => {
   return auth.userId;
 };
 
+/** Hybrid create: signed-in → owner id; guest → null. */
+const optionalUserId = (req: Request): string | null => {
+  const auth = getAuth(req);
+  if (auth.isAuthenticated) {
+    return auth.userId;
+  }
+  return null;
+};
+
 export class UrlController {
   static createShortUrl = asyncHandler(async (req: Request, res: Response) => {
-    const clerkUserId = requireUserId(req);
+    const clerkUserId = optionalUserId(req);
     const urlData = await UrlService.createShortUrl(
       req.body as CreateUrlRequest,
       clerkUserId

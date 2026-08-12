@@ -22,7 +22,7 @@ type UrlRow = {
   id: number;
   shortCode: string;
   originalUrl: string;
-  clerkUserId: string;
+  clerkUserId: string | null;
   isActive: boolean;
   clickCount: number;
   expiresAt: Date | null;
@@ -41,7 +41,7 @@ const isUniqueViolation = (error: unknown): boolean =>
 export class UrlService {
   static async createShortUrl(
     data: CreateUrlRequest,
-    clerkUserId: string
+    clerkUserId: string | null
   ): Promise<UrlResponse> {
     const normalizedUrl = normalizeUrl(data.originalUrl);
     if (!isValidUrl(normalizedUrl)) {
@@ -228,13 +228,12 @@ export class UrlService {
   static async resolveRedirect(shortCode: string): Promise<RedirectResult> {
     const code = normalizeShortCode(shortCode);
 
+    // Hot path: increment click_count only (no updated_at) so Postgres can HOT-update.
     const rows = await prisma.$queryRaw<
       Array<{ id: number; original_url: string }>
     >`
       UPDATE urls
-      SET
-        click_count = click_count + 1,
-        updated_at = NOW()
+      SET click_count = click_count + 1
       WHERE short_code = ${code}
         AND is_active = true
         AND (expires_at IS NULL OR expires_at > NOW())

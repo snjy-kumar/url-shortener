@@ -25,6 +25,23 @@ async function authHeaders(
   };
 }
 
+async function optionalAuthHeaders(
+  getToken: GetToken | undefined,
+  extra?: Record<string, string>
+): Promise<HeadersInit> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...extra,
+  };
+  if (getToken) {
+    const token = await getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
 async function parseUrlResponse(res: Response): Promise<Url> {
   const json = (await res.json()) as ApiResponse<Url>;
 
@@ -38,12 +55,12 @@ async function parseUrlResponse(res: Response): Promise<Url> {
 }
 
 export async function createShortUrl(
-  getToken: GetToken,
+  getToken: GetToken | undefined,
   body: CreateUrlRequest
 ): Promise<Url> {
   const res = await fetch(`${API_BASE}/api/v1/urls/shorten`, {
     method: "POST",
-    headers: await authHeaders(getToken, {
+    headers: await optionalAuthHeaders(getToken, {
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(body),

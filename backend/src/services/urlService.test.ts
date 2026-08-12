@@ -184,4 +184,91 @@ describe('UrlService core flows', () => {
     const disabledResult = await UrlService.resolveRedirect(disabled.shortCode);
     expect(disabledResult).toEqual({ ok: false, reason: 'disabled' });
   });
+
+  it('creates anonymous links with null owner', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const created = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/anon',
+          customAlias: `t-anon-${suffix}`,
+        },
+        null
+      )
+    );
+
+    const row = await prisma.url.findUnique({
+      where: { shortCode: created.shortCode },
+    });
+    expect(row?.clerkUserId).toBeNull();
+
+    const listed = await UrlService.listUrls(TEST_USER, 100, 0);
+    expect(
+      listed.items.some((item) => item.shortCode === created.shortCode)
+    ).toBe(false);
+  });
+
+  it('stores clerk owner on signed-in create', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const created = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/owned',
+          customAlias: `t-owned-${suffix}`,
+        },
+        TEST_USER
+      )
+    );
+
+    const row = await prisma.url.findUnique({
+      where: { shortCode: created.shortCode },
+    });
+    expect(row?.clerkUserId).toBe(TEST_USER);
+  });
+
+  it('blocks mutate of unowned or anonymous links', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const owned = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/other-owned',
+          customAlias: `t-block-o-${suffix}`,
+        },
+        OTHER_USER
+      )
+    );
+    const anon = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/other-anon',
+          customAlias: `t-block-a-${suffix}`,
+        },
+        null
+      )
+    );
+
+    await expect(
+      UrlService.updateByShortCode(
+        owned.shortCode,
+        { originalUrl: 'https://example.com/hacked' },
+        TEST_USER
+      )
+    ).rejects.toBeInstanceOf(AppError);
+
+    await expect(
+      UrlService.deleteByShortCode(owned.shortCode, TEST_USER)
+    ).rejects.toBeInstanceOf(AppError);
+
+    await expect(
+      UrlService.getByShortCode(anon.shortCode, TEST_USER)
+    ).rejects.toBeInstanceOf(AppError);
+
+    await expect(
+      UrlService.updateByShortCode(
+        anon.shortCode,
+        { isActive: false },
+        TEST_USER
+      )
+    ).rejects.toBeInstanceOf(AppError);
+  });
 });
