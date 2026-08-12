@@ -19,6 +19,7 @@ import {
   hashIp,
 } from '../utils/claim.js';
 import { redirectCache } from '../utils/redirectCache.js';
+import { assertUrlNotMalicious } from '../utils/safeBrowsing.js';
 import type { DeadLinkReason } from '../utils/deadLinkPage.js';
 import {
   CreateUrlRequest,
@@ -62,6 +63,7 @@ export class UrlService {
     if (!isValidUrl(normalizedUrl)) {
       throw new AppError('Invalid URL provided', 400);
     }
+    await assertUrlNotMalicious(normalizedUrl);
 
     const expiry = resolveExpiryPatch({
       expiresAt: data.expiresAt,
@@ -248,6 +250,7 @@ export class UrlService {
       if (!isValidUrl(normalizedUrl)) {
         throw new AppError('Invalid URL provided', 400);
       }
+      await assertUrlNotMalicious(normalizedUrl);
       patch.originalUrl = normalizedUrl;
     }
 

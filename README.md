@@ -13,6 +13,8 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 - Case-insensitive short codes; race-safe create + max-click redirects
 - HTML 404/410 pages for dead links in browsers
 - Clerk auth for ownership; webhook purges links on `user.deleted`
+- Optional **Safe Browsing** malware/phishing check on create/update
+- Docker Compose: Postgres + Redis + API + web
 
 ## Stack
 
@@ -21,25 +23,38 @@ Full-stack URL shortener: Next.js UI + Express API + PostgreSQL + Clerk.
 | Frontend | Next.js 16, React 19, Tailwind 4, Clerk |
 | Backend | Node 20+, Express 5, TypeScript 6, Clerk |
 | DB | PostgreSQL + Prisma 7 |
+| Cache | In-memory LRU or Redis |
 
 ## Core design notes
 
 - **Hybrid create:** `POST /api/v1/urls/shorten` works without auth (`clerk_user_id` null). Bearer token attaches owner.
 - **Manage stays owned:** list / get / patch / delete require Clerk and ownership (UI on `/dashboard`).
-- **Thin redirect path:** `GET /:code` skips Clerk, body parsers, compression, and the global API rate limit. Dedicated redirect limiter only. No Redis — Postgres-only hot path.
+- **Thin redirect path:** `GET /:code` skips Clerk, body parsers, compression, and the global API rate limit. Dedicated redirect limiter only.
 - **Monitoring:** `/health` includes redirect counters + latency percentiles + 429 count (in-process). Full snapshot also on `GET /api/v1/admin/metrics`.
 - **Admin:** set `ADMIN_CLERK_USER_IDS` (comma-separated Clerk user ids) for takedown + metrics UI.
 - **Cache:** in-memory LRU by default; set `REDIS_URL` for Redis. Skips cache when `max_clicks` set (keeps atomic limit).
 - **Analytics:** append-only `click_events` (referrer / UA / hashed IP); dashboard shows recent clicks.
 - **Claim:** anonymous create returns one-time `claimToken` (stored hashed); `POST /urls/:code/claim` attaches owner.
 - **CAPTCHA:** Cloudflare Turnstile on guest create when `TURNSTILE_SECRET_KEY` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` set.
+- **Safety:** private/SSRF host blocklist always; Google Safe Browsing when `SAFE_BROWSING_API_KEY` set.
+
+## Docker Compose (full stack)
+
+```bash
+cp docker.env.example .env   # fill Clerk keys
+docker compose up --build
+# API http://localhost:3000  ·  UI http://localhost:3001
+# migrate runs automatically on API start
+```
+
+Services: `postgres`, `redis`, `api`, `web` — healthchecks on DB/Redis/API.
 
 ## Run locally
 
 ### Prerequisites
 
 - Node 20.19+ (24 recommended)
-- PostgreSQL (Docker example below)
+- PostgreSQL (Docker example below) — or use Compose above
 - Clerk app keys (frontend + backend)
 
 ### PostgreSQL (Docker)

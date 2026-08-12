@@ -7,7 +7,8 @@ COPY prisma.config.ts ./prisma.config.ts
 RUN npm ci
 COPY . .
 RUN npx prisma generate && npm run build \
-  && npm prune --omit=dev
+    && npm prune --omit=dev \
+    && npm install prisma@7.8.0 --omit=dev --no-audit --no-fund
 
 FROM node:24-alpine AS runner
 WORKDIR /app

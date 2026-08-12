@@ -25,6 +25,8 @@ interface Config {
   REDIRECT_CACHE_TTL_SECONDS: number;
   TURNSTILE_SECRET_KEY: string | undefined;
   TURNSTILE_REQUIRED_IN_PROD: boolean;
+  SAFE_BROWSING_API_KEY: string | undefined;
+  SAFE_BROWSING_FAIL_CLOSED: boolean;
 }
 
 const required = (key: string, fallback?: string): string => {
@@ -104,5 +106,9 @@ export const config: Config = {
   TURNSTILE_SECRET_KEY: process.env['TURNSTILE_SECRET_KEY'] || undefined,
   TURNSTILE_REQUIRED_IN_PROD:
     (process.env['TURNSTILE_REQUIRED_IN_PROD'] || 'false').toLowerCase() ===
+    'true',
+  SAFE_BROWSING_API_KEY: process.env['SAFE_BROWSING_API_KEY'] || undefined,
+  SAFE_BROWSING_FAIL_CLOSED:
+    (process.env['SAFE_BROWSING_FAIL_CLOSED'] || 'false').toLowerCase() ===
     'true',
 };
