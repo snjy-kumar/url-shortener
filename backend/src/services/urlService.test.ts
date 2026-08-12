@@ -3,6 +3,8 @@ import { prisma } from '../config/database.js';
 import { UrlService } from './urlService.js';
 import { AppError } from '../utils/errors.js';
 
+const TEST_USER = 'user_test_owner';
+const OTHER_USER = 'user_test_other';
 const createdCodes: string[] = [];
 
 const track = <T extends { shortCode: string }>(row: T): T => {
@@ -20,45 +22,93 @@ afterAll(async () => {
 });
 
 describe('UrlService core flows', () => {
-  it('creates, lists, renames alias, and fetches', async () => {
+  it('creates, lists, renames alias, and fetches for owner', async () => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const created = track(
-      await UrlService.createShortUrl({
-        originalUrl: 'https://example.com/core-create',
-        customAlias: `t-create-${suffix}`,
-      })
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/core-create',
+          customAlias: `t-create-${suffix}`,
+        },
+        TEST_USER
+      )
     );
 
     expect(created.shortCode).toBe(`t-create-${suffix}`);
     expect(created.shortUrl).toContain(created.shortCode);
 
-    const listed = await UrlService.listUrls(100, 0);
+    const listed = await UrlService.listUrls(TEST_USER, 100, 0);
     expect(listed.items.some((item) => item.shortCode === created.shortCode)).toBe(
       true
     );
 
+    const otherList = await UrlService.listUrls(OTHER_USER, 100, 0);
+    expect(
+      otherList.items.some((item) => item.shortCode === created.shortCode)
+    ).toBe(false);
+
     const renamed = track(
-      await UrlService.updateByShortCode(created.shortCode, {
-        customAlias: `t-renamed-${suffix}`,
-      })
+      await UrlService.updateByShortCode(
+        created.shortCode,
+        {
+          customAlias: `t-renamed-${suffix}`,
+        },
+        TEST_USER
+      )
     );
     expect(renamed.shortCode).toBe(`t-renamed-${suffix}`);
 
-    await expect(UrlService.getByShortCode(created.shortCode)).rejects.toBeInstanceOf(
-      AppError
-    );
-    const fetched = await UrlService.getByShortCode(renamed.shortCode);
+    await expect(
+      UrlService.getByShortCode(created.shortCode, TEST_USER)
+    ).rejects.toBeInstanceOf(AppError);
+    const fetched = await UrlService.getByShortCode(renamed.shortCode, TEST_USER);
     expect(fetched.originalUrl).toBe('https://example.com/core-create');
+
+    await expect(
+      UrlService.getByShortCode(renamed.shortCode, OTHER_USER)
+    ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('purges all links for a deleted Clerk user', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const a = track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/purge-a',
+          customAlias: `t-purge-a-${suffix}`,
+        },
+        TEST_USER
+      )
+    );
+    track(
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/purge-b',
+          customAlias: `t-purge-b-${suffix}`,
+        },
+        TEST_USER
+      )
+    );
+
+    const deleted = await UrlService.deleteAllForClerkUser(TEST_USER);
+    expect(deleted).toBeGreaterThanOrEqual(2);
+
+    await expect(
+      UrlService.getByShortCode(a.shortCode, TEST_USER)
+    ).rejects.toBeInstanceOf(AppError);
   });
 
   it('redirects once then expires at max clicks', async () => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const created = track(
-      await UrlService.createShortUrl({
-        originalUrl: 'https://example.com/max-clicks',
-        customAlias: `t-max-${suffix}`,
-        maxClicks: 1,
-      })
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/max-clicks',
+          customAlias: `t-max-${suffix}`,
+          maxClicks: 1,
+        },
+        TEST_USER
+      )
     );
 
     const first = await UrlService.resolveRedirect(created.shortCode);
@@ -74,11 +124,14 @@ describe('UrlService core flows', () => {
   it('is race-safe under concurrent max-click redirects', async () => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const created = track(
-      await UrlService.createShortUrl({
-        originalUrl: 'https://example.com/race',
-        customAlias: `t-race-${suffix}`,
-        maxClicks: 1,
-      })
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/race',
+          customAlias: `t-race-${suffix}`,
+          maxClicks: 1,
+        },
+        TEST_USER
+      )
     );
 
     const results = await Promise.all(
@@ -92,7 +145,7 @@ describe('UrlService core flows', () => {
     expect(okCount).toBe(1);
     expect(failCount).toBe(19);
 
-    const after = await UrlService.getByShortCode(created.shortCode);
+    const after = await UrlService.getByShortCode(created.shortCode, TEST_USER);
     expect(after.clickCount).toBe(1);
     expect(after.isExpired).toBe(true);
   });
@@ -100,11 +153,14 @@ describe('UrlService core flows', () => {
   it('rejects redirect when time-expired or disabled', async () => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const expired = track(
-      await UrlService.createShortUrl({
-        originalUrl: 'https://example.com/expired',
-        customAlias: `t-exp-${suffix}`,
-        expiresIn: 1,
-      })
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/expired',
+          customAlias: `t-exp-${suffix}`,
+          expiresIn: 1,
+        },
+        TEST_USER
+      )
     );
 
     await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -112,12 +168,19 @@ describe('UrlService core flows', () => {
     expect(expiredResult).toEqual({ ok: false, reason: 'expired' });
 
     const disabled = track(
-      await UrlService.createShortUrl({
-        originalUrl: 'https://example.com/disabled',
-        customAlias: `t-off-${suffix}`,
-      })
+      await UrlService.createShortUrl(
+        {
+          originalUrl: 'https://example.com/disabled',
+          customAlias: `t-off-${suffix}`,
+        },
+        TEST_USER
+      )
     );
-    await UrlService.updateByShortCode(disabled.shortCode, { isActive: false });
+    await UrlService.updateByShortCode(
+      disabled.shortCode,
+      { isActive: false },
+      TEST_USER
+    );
     const disabledResult = await UrlService.resolveRedirect(disabled.shortCode);
     expect(disabledResult).toEqual({ ok: false, reason: 'disabled' });
   });

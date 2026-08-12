@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { getAuth } from '@clerk/express';
 import { UrlService } from '../services/urlService.js';
 import { CreateUrlRequest, UpdateUrlRequest } from '../types/index.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -17,9 +18,21 @@ const wantsHtml = (req: Request): boolean => {
   return req.accepts(['html', 'json']) === 'html' || !accept.includes('json');
 };
 
+const requireUserId = (req: Request): string => {
+  const auth = getAuth(req);
+  if (!auth.isAuthenticated) {
+    throw new AppError('Unauthorized', 401);
+  }
+  return auth.userId;
+};
+
 export class UrlController {
   static createShortUrl = asyncHandler(async (req: Request, res: Response) => {
-    const urlData = await UrlService.createShortUrl(req.body as CreateUrlRequest);
+    const clerkUserId = requireUserId(req);
+    const urlData = await UrlService.createShortUrl(
+      req.body as CreateUrlRequest,
+      clerkUserId
+    );
     res.status(201).json({
       success: true,
       message: 'Short URL created',
@@ -28,9 +41,11 @@ export class UrlController {
   });
 
   static listUrls = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
     const limit = Number(req.query['limit'] ?? 50);
     const offset = Number(req.query['offset'] ?? 0);
     const result = await UrlService.listUrls(
+      clerkUserId,
       Number.isFinite(limit) ? limit : 50,
       Number.isFinite(offset) ? offset : 0
     );
@@ -41,12 +56,13 @@ export class UrlController {
   });
 
   static getShortUrl = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {
       throw new AppError('Not found', 404);
     }
 
-    const urlData = await UrlService.getByShortCode(shortCode);
+    const urlData = await UrlService.getByShortCode(shortCode, clerkUserId);
     res.status(200).json({
       success: true,
       data: urlData,
@@ -54,6 +70,7 @@ export class UrlController {
   });
 
   static updateShortUrl = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {
       throw new AppError('Not found', 404);
@@ -61,7 +78,8 @@ export class UrlController {
 
     const urlData = await UrlService.updateByShortCode(
       shortCode,
-      req.body as UpdateUrlRequest
+      req.body as UpdateUrlRequest,
+      clerkUserId
     );
     res.status(200).json({
       success: true,
@@ -71,12 +89,13 @@ export class UrlController {
   });
 
   static deleteShortUrl = asyncHandler(async (req: Request, res: Response) => {
+    const clerkUserId = requireUserId(req);
     const shortCode = asStringParam(req.params['shortCode']);
     if (!shortCode) {
       throw new AppError('Not found', 404);
     }
 
-    await UrlService.deleteByShortCode(shortCode);
+    await UrlService.deleteByShortCode(shortCode, clerkUserId);
     res.status(200).json({
       success: true,
       message: 'Short URL deleted',

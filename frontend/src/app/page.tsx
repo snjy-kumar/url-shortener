@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  SignInButton,
+  SignUpButton,
+  Show,
+  UserButton,
+  useAuth,
+} from "@clerk/nextjs";
 import { FormEvent, startTransition, useEffect, useState } from "react";
 import {
   createShortUrl,
@@ -10,7 +17,6 @@ import {
 } from "@/lib/api";
 import {
   forgetCode,
-  readRecentCodes,
   rememberCode,
   renameRememberedCode,
 } from "@/lib/recent";
@@ -56,6 +62,7 @@ function statusLabel(url: Url): string {
 }
 
 export default function Home() {
+  const { getToken, isSignedIn, isLoaded } = useAuth();
   const [url, setUrl] = useState("");
   const [alias, setAlias] = useState("");
   const [expiryPreset, setExpiryPreset] = useState<ExpiryPreset>("never");
@@ -91,51 +98,49 @@ export default function Home() {
   };
 
   const refreshRecent = async () => {
-    const codes = readRecentCodes();
-    if (codes.length === 0) {
+    if (!isSignedIn) {
       startTransition(() => setRecent([]));
       return;
     }
-
-    const results = await Promise.all(
-      codes.map(async (code) => {
-        try {
-          return await getShortUrl(code);
-        } catch {
-          forgetCode(code);
-          return null;
-        }
-      })
-    );
-    startTransition(() => {
-      setRecent(results.filter((item): item is Url => item !== null));
-    });
+    try {
+      const { items } = await listShortUrls(getToken, 30, 0);
+      for (const item of items) {
+        rememberCode(item.shortCode);
+      }
+      startTransition(() => setRecent(items));
+    } catch {
+      startTransition(() => setRecent([]));
+    }
   };
 
   useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      startTransition(() => {
+        setRecent([]);
+        setManaged(null);
+      });
+      return;
+    }
     let cancelled = false;
     void (async () => {
-      const codes = readRecentCodes();
-      if (codes.length === 0 || cancelled) return;
-      const results = await Promise.all(
-        codes.map(async (code) => {
-          try {
-            return await getShortUrl(code);
-          } catch {
-            forgetCode(code);
-            return null;
-          }
-        })
-      );
-      if (cancelled) return;
-      startTransition(() => {
-        setRecent(results.filter((item): item is Url => item !== null));
-      });
+      try {
+        const { items } = await listShortUrls(getToken, 30, 0);
+        if (cancelled) return;
+        for (const item of items) {
+          rememberCode(item.shortCode);
+        }
+        startTransition(() => setRecent(items));
+      } catch {
+        if (!cancelled) {
+          startTransition(() => setRecent([]));
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [getToken, isLoaded, isSignedIn]);
 
   const buildExpiryPayload = (
     preset: ExpiryPreset,
@@ -189,7 +194,7 @@ export default function Home() {
         customExpiresAt,
         maxClicks
       );
-      const data = await createShortUrl({
+      const data = await createShortUrl(getToken, {
         originalUrl: url.trim(),
         customAlias: alias.trim() || undefined,
         ...expiry,
@@ -211,7 +216,7 @@ export default function Home() {
     setCopied(false);
     setBusy(true);
     try {
-      const data = await getShortUrl(code);
+      const data = await getShortUrl(getToken, code);
       syncManaged(data);
       setLookupCode("");
       await refreshRecent();
@@ -227,7 +232,7 @@ export default function Home() {
     setCopied(false);
     setBusy(true);
     try {
-      const data = await getShortUrl(code);
+      const data = await getShortUrl(getToken, code);
       syncManaged(data);
     } catch (err) {
       forgetCode(code);
@@ -242,11 +247,11 @@ export default function Home() {
     setError(null);
     setBusy(true);
     try {
-      const { items } = await listShortUrls(30, 0);
+      const { items } = await listShortUrls(getToken, 30, 0);
       for (const item of items) {
         rememberCode(item.shortCode);
       }
-      await refreshRecent();
+      startTransition(() => setRecent(items));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -276,7 +281,7 @@ export default function Home() {
   const saveDestination = () =>
     run(async () => {
       if (!managed) return;
-      const data = await updateShortUrl(managed.shortCode, {
+      const data = await updateShortUrl(getToken, managed.shortCode, {
         originalUrl: editUrl.trim(),
       });
       syncManaged(data);
@@ -291,7 +296,7 @@ export default function Home() {
         throw new Error("Alias cannot be empty");
       }
       const prev = managed.shortCode;
-      const data = await updateShortUrl(prev, {
+      const data = await updateShortUrl(getToken, prev, {
         customAlias: nextAlias,
       });
       renameRememberedCode(prev, data.shortCode);
@@ -307,7 +312,7 @@ export default function Home() {
         editCustomExpiresAt,
         editMaxClicks
       );
-      const data = await updateShortUrl(managed.shortCode, expiry);
+      const data = await updateShortUrl(getToken, managed.shortCode, expiry);
       syncManaged(data);
       await refreshRecent();
     });
@@ -315,7 +320,7 @@ export default function Home() {
   const toggleActive = () =>
     run(async () => {
       if (!managed) return;
-      const data = await updateShortUrl(managed.shortCode, {
+      const data = await updateShortUrl(getToken, managed.shortCode, {
         isActive: !managed.isActive,
       });
       syncManaged(data);
@@ -325,7 +330,7 @@ export default function Home() {
   const refreshClicks = () =>
     run(async () => {
       if (!managed) return;
-      const data = await getShortUrl(managed.shortCode);
+      const data = await getShortUrl(getToken, managed.shortCode);
       syncManaged(data);
       await refreshRecent();
     });
@@ -334,7 +339,7 @@ export default function Home() {
     run(async () => {
       if (!managed) return;
       const code = managed.shortCode;
-      await deleteShortUrl(code);
+      await deleteShortUrl(getToken, code);
       forgetCode(code);
       setManaged(null);
       setEditUrl("");
@@ -418,13 +423,64 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-6 py-16">
-      <p className="font-[family-name:var(--font-display)] text-4xl tracking-tight text-ink sm:text-5xl">
-        Shortlink
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <p className="font-[family-name:var(--font-display)] text-4xl tracking-tight text-ink sm:text-5xl">
+          Shortlink
+        </p>
+        <div className="flex shrink-0 items-center gap-2 pt-1">
+          <Show when="signed-out">
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink hover:bg-paper"
+              >
+                Sign in
+              </button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button
+                type="button"
+                className="rounded-lg bg-sea px-3 py-1.5 text-sm font-medium text-white hover:bg-sea-dark"
+              >
+                Sign up
+              </button>
+            </SignUpButton>
+          </Show>
+          <Show when="signed-in">
+            <UserButton />
+          </Show>
+        </div>
+      </div>
       <p className="mt-3 max-w-md text-lg text-muted">
         Paste a long URL. Get a short one.
       </p>
 
+      {!isLoaded ? (
+        <p className="mt-8 text-sm text-muted">Loading…</p>
+      ) : !isSignedIn ? (
+        <div className="mt-8 rounded-lg border border-line bg-white p-6">
+          <p className="text-ink">Sign in to create and manage short links.</p>
+          <div className="mt-4 flex gap-2">
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:bg-paper"
+              >
+                Sign in
+              </button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button
+                type="button"
+                className="rounded-lg bg-sea px-4 py-2 text-sm font-medium text-white hover:bg-sea-dark"
+              >
+                Sign up
+              </button>
+            </SignUpButton>
+          </div>
+        </div>
+      ) : (
+        <>
       <form onSubmit={onLookup} className="mt-8 flex gap-2">
         <input
           id="lookup"
@@ -501,14 +557,14 @@ export default function Home() {
       {recent.length > 0 && (
         <section className="mt-8">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-sm text-muted">Recent links</p>
+            <p className="text-sm text-muted">Your links</p>
             <button
               type="button"
               disabled={busy}
               onClick={syncFromServerList}
               className="text-sm text-sea underline-offset-2 hover:underline disabled:opacity-50"
             >
-              Sync from server
+              Refresh
             </button>
           </div>
           <ul className="divide-y divide-line rounded-lg border border-line bg-white">
@@ -664,6 +720,8 @@ export default function Home() {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </main>
   );

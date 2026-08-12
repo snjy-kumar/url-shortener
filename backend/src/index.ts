@@ -4,6 +4,7 @@ import cors from 'cors';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
+import { clerkMiddleware } from '@clerk/express';
 
 import { config } from './config/env.js';
 import { prisma } from './config/database.js';
@@ -16,6 +17,7 @@ import {
 } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { UrlController } from './controllers/urlController.js';
+import { ClerkWebhookController } from './controllers/clerkWebhookController.js';
 import urlRoutes from './routes/url.js';
 
 setupGlobalErrorHandlers();
@@ -49,6 +51,14 @@ app.use(
 );
 
 app.use(
+  clerkMiddleware({
+    ...(config.CLERK_AUTHORIZED_PARTIES.length > 0
+      ? { authorizedParties: config.CLERK_AUTHORIZED_PARTIES }
+      : {}),
+  })
+);
+
+app.use(
   rateLimit({
     windowMs: config.RATE_LIMIT_WINDOW_MS,
     max: config.RATE_LIMIT_MAX_REQUESTS,
@@ -63,6 +73,13 @@ const redirectLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Raw body required for Svix signature verification (before express.json).
+app.post(
+  '/api/v1/webhooks/clerk',
+  express.raw({ type: 'application/json' }),
+  ClerkWebhookController.handle
+);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));

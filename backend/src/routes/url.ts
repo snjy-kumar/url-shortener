@@ -4,8 +4,13 @@ import {
   validateCreateUrl,
   validateUpdateUrl,
 } from '../middleware/validation.js';
+import { requireClerkAuth } from '../middleware/requireClerkAuth.js';
+import { authenticatedUserLimiter } from '../middleware/authenticatedUserLimiter.js';
 
 const router = Router();
+
+router.use(requireClerkAuth);
+router.use(authenticatedUserLimiter);
 
 router.post('/shorten', validateCreateUrl, UrlController.createShortUrl);
 router.get('/', UrlController.listUrls);

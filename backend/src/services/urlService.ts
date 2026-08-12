@@ -22,6 +22,7 @@ type UrlRow = {
   id: number;
   shortCode: string;
   originalUrl: string;
+  clerkUserId: string;
   isActive: boolean;
   clickCount: number;
   expiresAt: Date | null;
@@ -38,7 +39,10 @@ const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 export class UrlService {
-  static async createShortUrl(data: CreateUrlRequest): Promise<UrlResponse> {
+  static async createShortUrl(
+    data: CreateUrlRequest,
+    clerkUserId: string
+  ): Promise<UrlResponse> {
     const normalizedUrl = normalizeUrl(data.originalUrl);
     if (!isValidUrl(normalizedUrl)) {
       throw new AppError('Invalid URL provided', 400);
@@ -61,6 +65,7 @@ export class UrlService {
           data: {
             shortCode: parsed.shortCode,
             originalUrl: normalizedUrl,
+            clerkUserId,
             expiresAt: expiry.expiresAt ?? null,
             maxClicks: expiry.maxClicks ?? null,
           },
@@ -84,6 +89,7 @@ export class UrlService {
           data: {
             shortCode,
             originalUrl: normalizedUrl,
+            clerkUserId,
             expiresAt: expiry.expiresAt ?? null,
             maxClicks: expiry.maxClicks ?? null,
           },
@@ -100,25 +106,31 @@ export class UrlService {
     throw new AppError('Unable to generate unique short code', 500);
   }
 
-  static async getByShortCode(shortCode: string): Promise<UrlResponse> {
-    const url = await this.findOrThrow(shortCode);
+  static async getByShortCode(
+    shortCode: string,
+    clerkUserId: string
+  ): Promise<UrlResponse> {
+    const url = await this.findOwnedOrThrow(shortCode, clerkUserId);
     return this.format(url);
   }
 
   static async listUrls(
+    clerkUserId: string,
     limit = 50,
     offset = 0
   ): Promise<{ items: UrlResponse[]; total: number }> {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
+    const where = { clerkUserId };
 
     const [rows, total] = await Promise.all([
       prisma.url.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         take,
         skip,
       }),
-      prisma.url.count(),
+      prisma.url.count({ where }),
     ]);
 
     return {
@@ -129,10 +141,11 @@ export class UrlService {
 
   static async updateByShortCode(
     shortCode: string,
-    data: UpdateUrlRequest
+    data: UpdateUrlRequest,
+    clerkUserId: string
   ): Promise<UrlResponse> {
     const code = normalizeShortCode(shortCode);
-    await this.findOrThrow(code);
+    await this.findOwnedOrThrow(code, clerkUserId);
 
     const patch: {
       shortCode?: string;
@@ -197,10 +210,19 @@ export class UrlService {
     }
   }
 
-  static async deleteByShortCode(shortCode: string): Promise<void> {
+  static async deleteByShortCode(
+    shortCode: string,
+    clerkUserId: string
+  ): Promise<void> {
     const code = normalizeShortCode(shortCode);
-    await this.findOrThrow(code);
+    await this.findOwnedOrThrow(code, clerkUserId);
     await prisma.url.delete({ where: { shortCode: code } });
+  }
+
+  /** Purge all links owned by a Clerk user (e.g. user.deleted webhook). */
+  static async deleteAllForClerkUser(clerkUserId: string): Promise<number> {
+    const result = await prisma.url.deleteMany({ where: { clerkUserId } });
+    return result.count;
   }
 
   static async resolveRedirect(shortCode: string): Promise<RedirectResult> {
@@ -245,9 +267,14 @@ export class UrlService {
     return { ok: false, reason: 'expired' };
   }
 
-  private static async findOrThrow(shortCode: string): Promise<UrlRow> {
+  private static async findOwnedOrThrow(
+    shortCode: string,
+    clerkUserId: string
+  ): Promise<UrlRow> {
     const code = normalizeShortCode(shortCode);
-    const url = await prisma.url.findUnique({ where: { shortCode: code } });
+    const url = await prisma.url.findFirst({
+      where: { shortCode: code, clerkUserId },
+    });
     if (!url) {
       throw new AppError('URL not found', 404);
     }
